@@ -3,8 +3,8 @@
 	url = https://github.com/mikke89/RmlUi/
 [submodule "lib/rt64"]
 	path = lib/rt64
-	url = https://github.com/klorfmorf/rt64
-	branch = goemon-patches
+	url = https://github.com/oneup03/rt64-3D.git
+	branch = Goemon3D
 [submodule "lib/freetype-windows-binaries"]
 	path = lib/freetype-windows-binaries
 	url = https://github.com/ubawurinna/freetype-windows-binaries
@@ -21,3 +21,6 @@
 [submodule "lib/mnsg"]
 	path = lib/mnsg
 	url = https://github.com/klorfmorf/mnsg
+[submodule "lib/LeiaSR64"]
+	path = lib/LeiaSR64
+	url = https://github.com/oneup03/LeiaSR64.git

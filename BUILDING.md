@@ -42,6 +42,9 @@ Follow the build instructions for the [Mystical Ninja Starring Goemon Decompilat
 
 Copy the decompressed ROM with the name `baserom.us.decompressed.z64` from the root of the decompilation project to the root of the Goemon64Recomp repository and rename it to `mnsg.us.decompressed.z64`.
 
+> [!WARNING]
+> Make sure the *decompressed* ROM (32 MB) is the one named `mnsg.us.decompressed.z64`. The original *compressed* ROM (16 MB) — if you also keep it around — must NOT be named `mnsg.z64`, because Windows would case-insensitively shadow the decompressed file referenced in `mnsg.toml` and cause N64Recomp to "recompile" compressed data as MIPS, producing thousands of bogus errors. The expected SHA1 of the original is `df8083a54296b8c151917c5333e1c85f014a2a66`; the decompressed file will have a different hash.
+
 ## 4. Generating the C code
 
 Now that you have the required files, you must build [N64Recomp](https://github.com/Mr-Wiseguy/N64Recomp) and run it to generate the C code to be compiled. The building instructions can be found [here](https://github.com/Mr-Wiseguy/N64Recomp?tab=readme-ov-file#building). That will build the executables: `N64Recomp` and `RSPRecomp` which you should copy to the root of the Goemon64Recomp repository.

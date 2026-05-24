@@ -184,3 +184,13 @@ extern "C" void recomp_set_right_analog_suppressed(uint8_t* rdram, recomp_contex
 
     recomp::set_right_analog_suppressed(suppressed);
 }
+
+// @recomp Per-frame signal from the game indicating whether the current scene
+// should use reduced stereo convergence — e.g. FMVs, file select, top-down
+// minigames, first-person views. The renderer multiplies the convergence
+// slider by the user's auto-convergence scale (0..100%) when active.
+// 0 = normal convergence; 1 = low-convergence scene.
+extern "C" void recomp_stereo_set_low_convergence_scene(uint8_t* rdram, recomp_context* ctx) {
+    s32 active = _arg<0, s32>(rdram, ctx);
+    goemon64::renderer::set_stereo_runtime_low_convergence(active != 0);
+}

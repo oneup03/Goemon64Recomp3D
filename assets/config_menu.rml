@@ -26,6 +26,7 @@
 	<link type="text/template" href="config_menu/general.rml" />
 	<link type="text/template" href="config_menu/controls.rml" />
 	<link type="text/template" href="config_menu/graphics.rml" />
+	<link type="text/template" href="config_menu/stereo.rml" />
 	<link type="text/template" href="config_menu/sound.rml" />
 	<link type="text/template" href="config_menu/mods.rml" />
 	<link type="text/template" href="config_menu/debug.rml" />
@@ -56,6 +57,13 @@
 						</tab>
 						<panel class="config" data-model="graphics_model">
 							<template src="config-menu__graphics" />
+						</panel>
+						<tab class="tab" id="tab_stereo">
+							<div>3D</div>
+							<div class="tab__indicator"></div>
+						</tab>
+						<panel class="config" data-model="graphics_model">
+							<template src="config-menu__stereo" />
 						</panel>
 						<tab class="tab" id="tab_sound">
 							<div>Sound</div>

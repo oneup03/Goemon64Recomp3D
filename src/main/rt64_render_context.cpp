@@ -1,3 +1,4 @@
+#include <atomic>
 #include <memory>
 #include <cstring>
 #include <variant>
@@ -18,6 +19,100 @@
 static RT64::UserConfiguration::Antialiasing device_max_msaa = RT64::UserConfiguration::Antialiasing::None;
 static bool sample_positions_supported = false;
 static bool high_precision_fb_enabled = false;
+
+// Stereo state pushed by set_stereo_config() and consumed by RT64Context before
+// the RT64 application advances a frame. Packed into a single atomic<uint64_t>
+// so all four values land coherently without a mutex.
+//   bits [15:0]  separation slider (0..100)
+//   bits [31:16] convergence slider (1..100)
+//   bits [47:32] mode (StereoMode enum value)
+//   bits [63:48] HUD depth slider (0..100)
+static std::atomic<uint64_t> stereo_config_packed{0};
+
+// Auto-convergence pair packed into a second atomic.
+//   bits [7:0]  autoConvergenceScale slider (0..100)
+//   bits [8]    autoConvergence on/off
+static std::atomic<uint32_t> stereo_auto_packed{0};
+
+// Set by the game once per frame via recomp_stereo_set_low_convergence_scene.
+// Only consulted when auto-convergence is enabled; defaults to false so users
+// who don't opt in see no behavior change.
+static std::atomic<bool> stereo_runtime_low_convergence{false};
+
+static uint64_t pack_stereo_config(RT64::UserConfiguration::StereoMode mode, uint32_t separation, uint32_t convergence, uint32_t hudDepth) {
+    return (static_cast<uint64_t>(hudDepth & 0xFFFFu) << 48) |
+           (static_cast<uint64_t>(static_cast<uint32_t>(mode) & 0xFFFFu) << 32) |
+           (static_cast<uint64_t>(convergence & 0xFFFFu) << 16) |
+           (static_cast<uint64_t>(separation & 0xFFFFu));
+}
+
+static void unpack_stereo_config(uint64_t packed, RT64::UserConfiguration::StereoMode &mode, uint32_t &separation, uint32_t &convergence, uint32_t &hudDepth) {
+    separation = static_cast<uint32_t>(packed & 0xFFFFu);
+    convergence = static_cast<uint32_t>((packed >> 16) & 0xFFFFu);
+    mode = static_cast<RT64::UserConfiguration::StereoMode>((packed >> 32) & 0xFFFFu);
+    hudDepth = static_cast<uint32_t>((packed >> 48) & 0xFFFFu);
+}
+
+static std::atomic<uint64_t> stereo_config_last_applied{UINT64_MAX};
+
+static void apply_pending_stereo_config(RT64::Application *app) {
+    if (app == nullptr) {
+        return;
+    }
+    const uint64_t packed = stereo_config_packed.load(std::memory_order_relaxed);
+    const uint32_t autoPacked = stereo_auto_packed.load(std::memory_order_relaxed);
+    const bool runtimeLowConv = stereo_runtime_low_convergence.load(std::memory_order_relaxed);
+
+    // Fold all three inputs into a single composite key so the "skip duplicate
+    // pushes" optimization still works. The runtime low-convergence flag can
+    // change frame-to-frame independently of the user's saved config, so it
+    // must participate in the dup-check.
+    const uint64_t compositeKey = packed
+        ^ (static_cast<uint64_t>(autoPacked) << 1)
+        ^ (runtimeLowConv ? 0xA55A5AA5ull : 0ull);
+    if (compositeKey == stereo_config_last_applied.load(std::memory_order_relaxed)) {
+        return;
+    }
+    RT64::UserConfiguration::StereoMode mode;
+    uint32_t separation;
+    uint32_t convergence;
+    uint32_t hudDepth;
+    unpack_stereo_config(packed, mode, separation, convergence, hudDepth);
+
+    const bool autoConvergence = (autoPacked & (1u << 8)) != 0u;
+    const uint32_t autoConvergenceScale = autoPacked & 0xFFu;
+    uint32_t effectiveConvergence = convergence;
+    if (autoConvergence && runtimeLowConv) {
+        // Round to nearest. Clamp to >=1 so downstream code that divides by
+        // convergence can't blow up.
+        const uint32_t scaled = (convergence * autoConvergenceScale + 50u) / 100u;
+        effectiveConvergence = std::max<uint32_t>(1u, scaled);
+    }
+
+    app->userConfig.stereoMode = mode;
+    app->userConfig.stereoSeparation = separation;
+    app->userConfig.stereoConvergence = effectiveConvergence;
+    app->userConfig.stereoHudDepth = hudDepth;
+    // Propagate into sharedQueueResources->userConfig so the workload and present
+    // threads see the new values. discardFBs=false: stereo doesn't change render
+    // target resolution or framebuffer layout.
+    app->updateUserConfig(false);
+    stereo_config_last_applied.store(compositeKey, std::memory_order_relaxed);
+}
+
+void goemon64::renderer::set_stereo_config(RT64::UserConfiguration::StereoMode mode, uint32_t separation, uint32_t convergence, uint32_t hudDepth, bool autoConvergence, uint32_t autoConvergenceScale) {
+    separation = std::clamp<uint32_t>(separation, 0, 100);
+    convergence = std::clamp<uint32_t>(convergence, 1, 100);
+    hudDepth = std::clamp<uint32_t>(hudDepth, 0, 100);
+    autoConvergenceScale = std::clamp<uint32_t>(autoConvergenceScale, 0, 100);
+    stereo_config_packed.store(pack_stereo_config(mode, separation, convergence, hudDepth), std::memory_order_relaxed);
+    const uint32_t autoPacked = (autoConvergence ? (1u << 8) : 0u) | (autoConvergenceScale & 0xFFu);
+    stereo_auto_packed.store(autoPacked, std::memory_order_relaxed);
+}
+
+void goemon64::renderer::set_stereo_runtime_low_convergence(bool active) {
+    stereo_runtime_low_convergence.store(active, std::memory_order_relaxed);
+}
 
 static uint8_t DMEM[0x1000];
 static uint8_t IMEM[0x1000];
@@ -326,6 +421,7 @@ goemon64::renderer::RT64Context::~RT64Context() = default;
 
 void goemon64::renderer::RT64Context::send_dl(const OSTask* task) {
     check_texture_pack_actions();
+    apply_pending_stereo_config(app.get());
     app->state->rsp->reset();
     app->interpreter->loadUCodeGBI(task->t.ucode & 0x3FFFFFF, task->t.ucode_data & 0x3FFFFFF, true);
     app->processDisplayLists(app->core.RDRAM, task->t.data_ptr & 0x3FFFFFF, 0, true);

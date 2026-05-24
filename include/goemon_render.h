@@ -52,6 +52,20 @@ namespace goemon64 {
         void secondary_enable_texture_pack(const std::string& mod_id);
         void secondary_disable_texture_pack(const std::string& mod_id);
 
+        // Push stereoscopic 3D settings from the UI/config thread to the RT64
+        // application thread. Values are clamped to valid slider ranges
+        // (separation: 0..100, convergence: 1..100, hudDepth: 0..100,
+        // autoConvergenceScale: 0..100). The change is applied atomically once
+        // per RT64 frame by an internal apply_pending_stereo_config helper.
+        void set_stereo_config(RT64::UserConfiguration::StereoMode mode, uint32_t separation, uint32_t convergence, uint32_t hudDepth, bool autoConvergence, uint32_t autoConvergenceScale);
+
+        // Per-frame runtime signal from the game (via the recomp export
+        // recomp_stereo_set_low_convergence_scene) indicating whether the
+        // current scene should use reduced convergence — used to soften
+        // stereo on FMVs / file select / first-person / minigames when the
+        // user has enabled auto-convergence.
+        void set_stereo_runtime_low_convergence(bool active);
+
         // Texture pack enable option. Must be an enum with two options.
         // The first option is treated as disabled and the second option is treated as enabled.
         bool is_texture_pack_enable_config_option(const recomp::mods::ConfigOption& option, bool show_errors);

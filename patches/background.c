@@ -41,6 +41,16 @@ RECOMP_PATCH void func_80021740_22340(BackgroundGraphicsNode* node)
 {
 	s32 image_size;
 
+	// @recomp Tag the texture rectangles this dispatcher emits as skybox
+	// rects so RT64's stereo pipeline uses maximum positive parallax
+	// (infinity-like depth) on them instead of the HUD depth shift the
+	// default rect path applies. The flag is per-draw extended state
+	// (DrawExtendedFlags.skyboxRect), set via the gEXSetSkyboxRect GBI
+	// command and carried onto each drawCall by RT64's state loader.
+	// Matrix-group tags via G_MTX_PROJECTION don't propagate here because
+	// texture rects hardcode transformsIndex=0.
+	gEXSetSkyboxRect(D_8015C5CC_15D1CC++, 1);
+
 	if (!(node->flags & (1 << 13))) {
 		gSPSegment(D_8015C5CC_15D1CC++, 8, func_800141C4_14DC4(node->overlay_file_id));
 		node->texture_data = (u8 *)0x08000000;
@@ -75,6 +85,10 @@ RECOMP_PATCH void func_80021740_22340(BackgroundGraphicsNode* node)
 	} else {
 		func_80022A74_23674(node);
 	}
+
+	// @recomp Clear the skybox-rect flag so subsequent rectangles (HUD,
+	// dialog, text, etc.) revert to the default HUD-depth stereo shift.
+	gEXSetSkyboxRect(D_8015C5CC_15D1CC++, 0);
 }
 
 extern s32 D_8006D158_6DD58;

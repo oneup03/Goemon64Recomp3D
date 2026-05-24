@@ -240,9 +240,30 @@ struct ControlOptionsContext {
     goemon64::CameraInvertMode camera_invert_mode;
     goemon64::AnalogCamMode analog_cam_mode;
     goemon64::CameraInvertMode analog_camera_invert_mode;
+    goemon64::StereoSettings stereo_settings;
 };
 
 ControlOptionsContext control_options_context;
+
+goemon64::StereoSettings goemon64::get_stereo_settings() {
+    return control_options_context.stereo_settings;
+}
+
+void goemon64::set_stereo_settings(const goemon64::StereoSettings &settings) {
+    control_options_context.stereo_settings = settings;
+    if (general_model_handle) {
+        general_model_handle.DirtyVariable("stereo_mode");
+        general_model_handle.DirtyVariable("stereo_separation");
+        general_model_handle.DirtyVariable("stereo_convergence");
+        general_model_handle.DirtyVariable("stereo_hud_depth");
+        general_model_handle.DirtyVariable("stereo_auto_convergence");
+        general_model_handle.DirtyVariable("stereo_auto_convergence_scale");
+    }
+    // Push the new settings to the renderer's atomic config bridge so the
+    // RT64 application thread sees them on the next frame.
+    goemon64::renderer::set_stereo_config(settings.mode, settings.separation, settings.convergence,
+        settings.hudDepth, settings.autoConvergence, settings.autoConvergenceScale);
+}
 
 int recomp::get_rumble_strength() {
     return control_options_context.rumble_strength;
@@ -631,6 +652,70 @@ public:
                 new_options.rr_manual_value = in.Get<int>();
                 graphics_model_handle.DirtyVariable("options_changed");
             });
+
+        // Stereoscopic 3D. Applied immediately (no "Apply" button needed): the
+        // renderer's atomic config bridge picks up changes on the next frame
+        // without recreating render targets, and unifies the in-memory state
+        // with the persisted general.json.
+        constructor.BindFunc("stereo_mode",
+            [](Rml::Variant& out) {
+                // Radios compare data-checked against the value="..." attribute
+                // (string). Return the mode index as a string so the comparison
+                // matches the radio values 0..7.
+                out = std::to_string(static_cast<int>(goemon64::get_stereo_settings().mode));
+            },
+            [](const Rml::Variant& in) {
+                auto s = goemon64::get_stereo_settings();
+                int v = 0;
+                try { v = std::stoi(in.Get<Rml::String>()); }
+                catch (...) { v = 0; }
+                if (v >= 0 && v < static_cast<int>(RT64::UserConfiguration::StereoMode::OptionCount)) {
+                    s.mode = static_cast<RT64::UserConfiguration::StereoMode>(v);
+                    goemon64::set_stereo_settings(s);
+                }
+            });
+        constructor.BindFunc("stereo_separation",
+            [](Rml::Variant& out) { out = static_cast<int>(goemon64::get_stereo_settings().separation); },
+            [](const Rml::Variant& in) {
+                auto s = goemon64::get_stereo_settings();
+                s.separation = std::clamp(in.Get<int>(), 0, 100);
+                goemon64::set_stereo_settings(s);
+            });
+        constructor.BindFunc("stereo_convergence",
+            [](Rml::Variant& out) { out = static_cast<int>(goemon64::get_stereo_settings().convergence); },
+            [](const Rml::Variant& in) {
+                auto s = goemon64::get_stereo_settings();
+                s.convergence = std::clamp(in.Get<int>(), 1, 100);
+                goemon64::set_stereo_settings(s);
+            });
+        constructor.BindFunc("stereo_hud_depth",
+            [](Rml::Variant& out) { out = static_cast<int>(goemon64::get_stereo_settings().hudDepth); },
+            [](const Rml::Variant& in) {
+                auto s = goemon64::get_stereo_settings();
+                s.hudDepth = std::clamp(in.Get<int>(), 0, 100);
+                goemon64::set_stereo_settings(s);
+            });
+        constructor.BindFunc("stereo_auto_convergence",
+            [](Rml::Variant& out) {
+                // Matched against radio value="0"/"1" — return a string.
+                out = std::string(goemon64::get_stereo_settings().autoConvergence ? "1" : "0");
+            },
+            [](const Rml::Variant& in) {
+                auto s = goemon64::get_stereo_settings();
+                int v = 0;
+                try { v = std::stoi(in.Get<Rml::String>()); }
+                catch (...) { v = 0; }
+                s.autoConvergence = (v != 0);
+                goemon64::set_stereo_settings(s);
+            });
+        constructor.BindFunc("stereo_auto_convergence_scale",
+            [](Rml::Variant& out) { out = static_cast<int>(goemon64::get_stereo_settings().autoConvergenceScale); },
+            [](const Rml::Variant& in) {
+                auto s = goemon64::get_stereo_settings();
+                s.autoConvergenceScale = std::clamp(in.Get<int>(), 0, 100);
+                goemon64::set_stereo_settings(s);
+            });
+
         constructor.BindFunc("ds_option",
             [](Rml::Variant& out) {
                 if (new_options.res_option == ultramodern::renderer::Resolution::Auto) {

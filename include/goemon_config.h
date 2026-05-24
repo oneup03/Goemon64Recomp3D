@@ -1,8 +1,10 @@
 #ifndef __GOEMON_CONFIG_H__
 #define __GOEMON_CONFIG_H__
 
+#include <cstdint>
 #include <filesystem>
 #include <string_view>
+#include "common/rt64_user_configuration.h"
 #include "ultramodern/config.hpp"
 #include "recomp_input.h"
 
@@ -88,6 +90,18 @@ namespace goemon64 {
     void set_analog_cam_mode(AnalogCamMode mode);
 
     void open_quit_game_prompt();
+
+    // Stereoscopic 3D settings.
+    struct StereoSettings {
+        RT64::UserConfiguration::StereoMode mode = RT64::UserConfiguration::StereoMode::Off;
+        uint32_t separation = 50;
+        uint32_t convergence = 20;
+        uint32_t hudDepth = 35;
+        bool autoConvergence = true;
+        uint32_t autoConvergenceScale = 25; // 0..100, applied when the game signals a low-convergence scene.
+    };
+    StereoSettings get_stereo_settings();
+    void set_stereo_settings(const StereoSettings &settings);
 };
 
 #endif
