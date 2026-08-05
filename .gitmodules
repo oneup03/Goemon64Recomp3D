@@ -21,6 +21,7 @@
 [submodule "lib/mnsg"]
 	path = lib/mnsg
 	url = https://github.com/klorfmorf/mnsg
-[submodule "lib/LeiaSR64"]
-	path = lib/LeiaSR64
-	url = https://github.com/oneup03/LeiaSR64.git
+[submodule "lib/SR-lib"]
+	path = lib/SR-lib
+	url = https://github.com/bo3b/SR-lib.git
+	branch = api_expansion
