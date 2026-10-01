@@ -212,7 +212,7 @@
                         Convergence distance in game units (1..200). The depth at which objects sit exactly on the screen plane. Objects closer pop out, objects farther push back. It does not change how deep the background sits &mdash; only what is in front of the screen. Defaults to 20.
                     </p>
                     <p data-if="cur_config_index == 3">
-                        HUD depth (0..100). <b>50</b> places the HUD on the screen plane. Below 50 pushes the HUD behind the screen; above 50 makes it pop out toward you. Defaults to 35.
+                        HUD depth (0..100). <b>50</b> places the HUD on the screen plane. Below 50 pushes it behind the screen, down to <b>0</b> at the depth of the sky; above 50 brings it out toward you, up to <b>100</b> as far in front as the sky is behind. Defaults to 35.
                     </p>
                     <p data-if="cur_config_index == 4">
                         When <b>On</b>, the renderer samples the depth buffer and pulls the screen plane in whenever the nearest thing on screen would pop out past the Comfort Target. Your convergence slider stays the ceiling &mdash; this only ever moves the screen plane closer, never further.

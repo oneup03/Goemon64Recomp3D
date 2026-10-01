@@ -661,16 +661,32 @@ RECOMP_PATCH void func_80021740_22340(BackgroundGraphicsNode* node)
 {
 	s32 image_size;
 	int sky_tracking;
+	int sky_is_backdrop;
 
-	// @recomp Tag the texture rectangles this dispatcher emits as skybox
-	// rects so RT64's stereo pipeline uses maximum positive parallax
-	// (infinity-like depth) on them instead of the HUD depth shift the
-	// default rect path applies. The flag is per-draw extended state
-	// (DrawExtendedFlags.skyboxRect), set via the gEXSetSkyboxRect GBI
-	// command and carried onto each drawCall by RT64's state loader.
-	// Matrix-group tags via G_MTX_PROJECTION don't propagate here because
-	// texture rects hardcode transformsIndex=0.
-	gEXSetSkyboxRect(D_8015C5CC_15D1CC++, G_EX_SKYBOX_RECT_STATIC);
+	// @recomp Tag the texture rectangles of a BACKDROP as skybox rects so
+	// RT64's stereo pipeline uses maximum positive parallax (infinity-like
+	// depth) on them instead of the HUD depth shift the default rect path
+	// applies. The flag is per-draw extended state (DrawExtendedFlags.skyboxRect),
+	// set via the gEXSetSkyboxRect GBI command and carried onto each drawCall
+	// by RT64's state loader. Matrix-group tags via G_MTX_PROJECTION don't
+	// propagate here because texture rects hardcode transformsIndex=0.
+	//
+	// Not every node this dispatcher draws is a backdrop: the same nodes draw
+	// 2D overlays such as the banner across the bottom of the screen (a 221x28
+	// node at 40,190) and title-screen captions (180x32 at 70,192). Tagged as
+	// sky, those sat at infinity behind the world; untagged, they take the
+	// rect path's HUD depth like the rest of the 2D UI. A backdrop covers the
+	// whole screen - within a few units of each edge, since the game's own
+	// full-screen nodes are 319x239 - and the panorama path (bit 15) always
+	// draws across the full background area.
+	sky_is_backdrop = (node->flags & (1 << 15)) ||
+		((node->upper_left_corner_x <= (f32)(D_8006D158_6DD58 + 8)) &&
+		 (node->upper_left_corner_y <= (f32)(D_8006D15C_6DD5C + 8)) &&
+		 ((node->upper_left_corner_x + node->rectangle_width) >= (f32)(D_8006D160_6DD60 - 8)) &&
+		 ((node->upper_left_corner_y + node->rectangle_height) >= (f32)(D_8006D164_6DD64 - 8)));
+	if (sky_is_backdrop) {
+		gEXSetSkyboxRect(D_8015C5CC_15D1CC++, G_EX_SKYBOX_RECT_STATIC);
+	}
 
 #if SKY_SCROLL_DEBUG
 	g_sky_debug_bg_calls++;
@@ -728,7 +744,7 @@ RECOMP_PATCH void func_80021740_22340(BackgroundGraphicsNode* node)
 	// Bit 14 draws a clipped sub-rect and 4-bit textures need even-aligned
 	// loads the column tiles do not keep, so those stay with the game's path.
 	sky_tracking = 0;
-	if (!(node->flags & (1 << 14)) && !((node->flags & (1 << 2)) && !(node->flags & (1 << 3)))) {
+	if (sky_is_backdrop && !(node->flags & (1 << 14)) && !((node->flags & (1 << 2)) && !(node->flags & (1 << 3)))) {
 		sky_tracking = sky_track(node);
 	}
 
