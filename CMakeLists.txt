@@ -392,6 +392,25 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     target_link_libraries(Goemon64Recompiled PRIVATE "-latomic -static-libstdc++" ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
 
+# Mirror assets/ next to the executable, where get_asset_path looks for the
+# menus and fonts, so edits to them reach the game on the next build. A target
+# with no outputs runs on every build, which a POST_BUILD step would not do for
+# an asset-only change. (The macOS bundle packages its own copy.)
+if (NOT APPLE)
+    if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.26)
+        set(ASSET_COPY_COMMAND copy_directory_if_different)
+    else()
+        set(ASSET_COPY_COMMAND copy_directory)
+    endif()
+    add_custom_target(SyncAssets
+        COMMAND ${CMAKE_COMMAND} -E ${ASSET_COPY_COMMAND}
+            "${CMAKE_SOURCE_DIR}/assets"
+            "$<TARGET_FILE_DIR:Goemon64Recompiled>/assets"
+        COMMENT "Syncing assets"
+    )
+    add_dependencies(Goemon64Recompiled SyncAssets)
+endif()
+
 target_link_libraries(Goemon64Recompiled PRIVATE
     PatchesLib
     RecompiledFuncs
