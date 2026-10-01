@@ -163,10 +163,22 @@ add_custom_command(OUTPUT
                        ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches.c
                        ${CMAKE_SOURCE_DIR}/RecompiledPatches/recomp_overlays.inl
                        ${CMAKE_SOURCE_DIR}/RecompiledPatches/funcs.h
-                   # TODO: Look into why modifying patches requires two builds to take
                    COMMAND ./N64Recomp patches.toml
                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                    DEPENDS ${CMAKE_SOURCE_DIR}/patches/build/patches.elf
+)
+
+# register_patches.cpp #includes the generated patch function table
+# (recomp_overlays.inl), which maps each patch function's address to its
+# recompiled body. Nothing told the build that, so ninja only learned of the
+# include after a first compile and never ordered that compile after
+# N64Recomp: a patch change could link the PREVIOUS build's table against the
+# new code. That is why "modifying patches requires two builds to take" - and
+# when a patch moved a function, the stale table sent indirect calls to the
+# wrong address ("Failed to find function at ..." at boot). Declaring the
+# dependency makes the table a prerequisite of that object.
+set_source_files_properties(${CMAKE_SOURCE_DIR}/src/main/register_patches.cpp PROPERTIES
+    OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/RecompiledPatches/recomp_overlays.inl;${CMAKE_SOURCE_DIR}/RecompiledPatches/funcs.h"
 )
 
 # Main executable
