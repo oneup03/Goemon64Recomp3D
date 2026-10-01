@@ -29,7 +29,8 @@ constexpr auto res_default            = ultramodern::renderer::Resolution::Auto;
 constexpr auto hr_default             = ultramodern::renderer::HUDRatioMode::Clamp16x9;
 constexpr auto api_default            = ultramodern::renderer::GraphicsApi::Auto;
 constexpr auto ar_default             = ultramodern::renderer::AspectRatio::Expand;
-constexpr auto msaa_default           = ultramodern::renderer::Antialiasing::MSAA2X;
+// MSAA is not offered: always off, whatever an older graphics.json says.
+constexpr auto msaa_default           = ultramodern::renderer::Antialiasing::None;
 constexpr auto rr_default             = ultramodern::renderer::RefreshRate::Display;
 constexpr auto hpfb_default           = ultramodern::renderer::HighPrecisionFramebuffer::Auto;
 constexpr int ds_default              = 1;
@@ -39,7 +40,7 @@ constexpr bool developer_mode_default = false;
 static bool is_steam_deck = false;
 
 ultramodern::renderer::WindowMode wm_default() {
-    return is_steam_deck ? ultramodern::renderer::WindowMode::Fullscreen : ultramodern::renderer::WindowMode::Windowed;
+    return ultramodern::renderer::WindowMode::Fullscreen;
 }
 
 #ifdef __gnu_linux__
@@ -99,7 +100,6 @@ namespace ultramodern {
             {"api_option",      config.api_option},
             {"ds_option",       config.ds_option},
             {"ar_option",       config.ar_option},
-            {"msaa_option",     config.msaa_option},
             {"rr_option",       config.rr_option},
             {"hpfb_option",     config.hpfb_option},
             {"rr_manual_value", config.rr_manual_value},
@@ -114,7 +114,7 @@ namespace ultramodern {
         config.api_option       = from_or_default(j, "api_option",      api_default);
         config.ds_option        = from_or_default(j, "ds_option",       ds_default);
         config.ar_option        = from_or_default(j, "ar_option",       ar_default);
-        config.msaa_option      = from_or_default(j, "msaa_option",     msaa_default);
+        config.msaa_option      = msaa_default;
         config.rr_option        = from_or_default(j, "rr_option",       rr_default);
         config.hpfb_option      = from_or_default(j, "hpfb_option",     hpfb_default);
         config.rr_manual_value  = from_or_default(j, "rr_manual_value", rr_manual_default);

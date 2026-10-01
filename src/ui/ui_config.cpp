@@ -96,11 +96,6 @@ static int scanned_input_index = -1;
 static int focused_input_index = -1;
 static int focused_config_option_index = -1;
 
-static bool msaa2x_supported = false;
-static bool msaa4x_supported = false;
-static bool msaa8x_supported = false;
-static bool sample_positions_supported = false;
-
 static bool cont_active = true;
 
 static recomp::InputDevice cur_device = recomp::InputDevice::Controller;
@@ -645,7 +640,6 @@ public:
         bind_option(constructor, "wm_option", &new_options.wm_option);
         bind_option(constructor, "ar_option", &new_options.ar_option);
         bind_option(constructor, "hr_option", &new_options.hr_option);
-        bind_option(constructor, "msaa_option", &new_options.msaa_option);
         bind_option(constructor, "rr_option", &new_options.rr_option);
         constructor.BindFunc("rr_manual_value",
             [](Rml::Variant& out) {
@@ -798,11 +792,6 @@ public:
                 out = " " PF_KEYBOARD_F;
             }
         });
-
-        constructor.Bind("msaa2x_supported", &msaa2x_supported);
-        constructor.Bind("msaa4x_supported", &msaa4x_supported);
-        constructor.Bind("msaa8x_supported", &msaa8x_supported);
-        constructor.Bind("sample_positions_supported", &sample_positions_supported);
 
         graphics_model_handle = constructor.GetModelHandle();
     }
@@ -1123,11 +1112,6 @@ void goemon64::set_debug_mode_enabled(bool enabled) {
 }
 
 void recompui::update_supported_options() {
-    msaa2x_supported = goemon64::renderer::RT64MaxMSAA() >= RT64::UserConfiguration::Antialiasing::MSAA2X;
-    msaa4x_supported = goemon64::renderer::RT64MaxMSAA() >= RT64::UserConfiguration::Antialiasing::MSAA4X;
-    msaa8x_supported = goemon64::renderer::RT64MaxMSAA() >= RT64::UserConfiguration::Antialiasing::MSAA8X;
-    sample_positions_supported = goemon64::renderer::RT64SamplePositionsSupported();
-    
     new_options = ultramodern::renderer::get_graphics_config();
 
     graphics_model_handle.DirtyAllVariables();

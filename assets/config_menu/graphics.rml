@@ -148,7 +148,7 @@
                                 data-checked="rr_option"
                                 value="Original"
                                 id="rr_original"
-                                data-attr-style="rr_option=='Manual' ? 'nav-up: #wm_windowed; nav-down: #rr_manual_input' : 'nav-up: #wm_windowed; nav-down: #msaa_none'"
+                                data-attr-style="rr_option=='Manual' ? 'nav-up: #wm_windowed; nav-down: #rr_manual_input' : 'nav-up: #wm_windowed; nav-down: #apply_button'"
                             />
                             <label class="config-option__tab-label" for="rr_original">Original</label>
                             <input type="radio"
@@ -159,7 +159,7 @@
                                 value="Display"
                                 id="rr_display"
                                 style="nav-up: #wm_fullscreen"
-                                data-style-nav-down="rr_option=='Manual' ? '#rr_manual_input' : (msaa2x_supported ? '#msaa_2x' : '#msaa_none')"
+                                data-style-nav-down="rr_option=='Manual' ? '#rr_manual_input' : '#apply_button'"
                             />
                             <label class="config-option__tab-label" for="rr_display">Display</label>
                             <input type="radio"
@@ -170,7 +170,7 @@
                                 value="Manual"
                                 id="rr_manual"
                                 style="nav-up: #wm_fullscreen"
-                                data-style-nav-down="rr_option=='Manual' ? '#rr_manual_input' : (msaa4x_supported ? '#msaa_4x' : (msaa2x_supported ? '#msaa_2x' : '#msaa_none'))"
+                                data-style-nav-down="rr_option=='Manual' ? '#rr_manual_input' : '#apply_button'"
                             />
                             <label class="config-option__tab-label" for="rr_manual">Manual</label>
                         </div>
@@ -183,49 +183,9 @@
                                 type="range"
                                 min="20"
                                 max="360"
-                                style="flex:1;margin: 0dp;nav-up:#rr_manual;nav-down:#msaa_none;"
+                                style="flex:1;margin: 0dp;nav-up:#rr_manual;nav-down:#apply_button;"
                                 data-value="rr_manual_value"
                             />
-                        </div>
-                    </div>
-
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(5)">
-                        <label class="config-option__title">MS Anti-Aliasing</label>
-                        <div class="config-option__list">
-                            <input type="radio"
-                                data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(5)"
-                                name="antialiasing"
-                                data-checked="msaa_option"
-                                value="None"
-                                id="msaa_none"
-                                data-attr-style="rr_option=='Manual' ? 'nav-up: #rr_manual_input; nav-down: #hr_original' : 'nav-up: #rr_original; nav-down: #hr_original'"
-                            />
-                            <label class="config-option__tab-label" for="msaa_none">None</label>
-                            <input type="radio"
-                                data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(5)"
-                                name="antialiasing"
-                                data-attrif-disabled="!msaa2x_supported"
-                                data-checked="msaa_option"
-                                value="MSAA2X"
-                                id="msaa_2x"
-                                data-attr-style="rr_option=='Manual' ? 'nav-up: #rr_manual_input; nav-down: #hr_16_9' : 'nav-up: #rr_display; nav-down: #hr_16_9'"
-                                data-style-nav-right="msaa4x_supported ? '#msaa_4x' : 'none'"
-                            />
-                            <label class="config-option__tab-label" for="msaa_2x">2x</label>
-                            <input type="radio"
-                                data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(5)"
-                                name="antialiasing"
-                                data-attrif-disabled="!msaa4x_supported"
-                                data-checked="msaa_option"
-                                value="MSAA4X"
-                                id="msaa_4x"
-                                data-attr-style="rr_option=='Manual' ? 'nav-up: #rr_manual_input; nav-down: #hr_full' : 'nav-up: #rr_manual; nav-down: #hr_full'"
-                            />
-                            <label class="config-option__tab-label" for="msaa_4x">4x</label>
-                            <div class="config-option__details" data-if="!sample_positions_supported">Not available (missing sample positions support)</div>
                         </div>
                     </div>
                 </div>
@@ -254,12 +214,6 @@
                         <br />
                         <b>Detected display refresh rate: {{display_refresh_rate}}hz</b>
                     </p>
-                    <p data-if="cur_config_index == 5">
-                        Sets the multisample anti-aliasing (MSAA) quality level. This reduces jagged edges in the final image at the expense of rendering performance.
-                        <br />
-                        <br />
-                        <b>Note: This option won't be available if your GPU does not support programmable MSAA sample positions, as it is currently required to avoid rendering glitches.</b>
-                    </p>
                     <p data-if="cur_config_index == 6">
                         Adjusts the placement of HUD elements to fit the selected aspect ratio. <b>Expand</b> will use the aspect ratio of the game's output window.
                     </p>
@@ -275,7 +229,7 @@
                         data-attrif-disabled="!options_changed"
                         onclick="apply_options"
                         id="apply_button"
-                        style="nav-up:#hr_original"
+                        style="nav-up:#rr_original"
                     >
                         <div class="button__label">Apply<span class="prompt-font-sm">{{gfx_help__apply}}</span></div>
                     </button>

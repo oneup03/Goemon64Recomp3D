@@ -16,8 +16,6 @@
 #include "recomp_ui.h"
 #include "concurrentqueue.h"
 
-static RT64::UserConfiguration::Antialiasing device_max_msaa = RT64::UserConfiguration::Antialiasing::None;
-static bool sample_positions_supported = false;
 static bool high_precision_fb_enabled = false;
 
 // Stereo state pushed by set_stereo_config() and consumed by RT64Context before
@@ -177,19 +175,6 @@ unsigned int DPC_TMEM_REG = 0;
 
 void dummy_check_interrupts() {}
 
-RT64::UserConfiguration::Antialiasing compute_max_supported_aa(plume::RenderSampleCounts bits) {
-    if (bits & plume::RenderSampleCount::Bits::COUNT_2) {
-        if (bits & plume::RenderSampleCount::Bits::COUNT_4) {
-            if (bits & plume::RenderSampleCount::Bits::COUNT_8) {
-                return RT64::UserConfiguration::Antialiasing::MSAA8X;
-            }
-            return RT64::UserConfiguration::Antialiasing::MSAA4X;
-        }
-        return RT64::UserConfiguration::Antialiasing::MSAA2X;
-    };
-    return RT64::UserConfiguration::Antialiasing::None;
-}
-
 RT64::UserConfiguration::AspectRatio to_rt64(ultramodern::renderer::AspectRatio option) {
     switch (option) {
     case ultramodern::renderer::AspectRatio::Original:
@@ -200,21 +185,6 @@ RT64::UserConfiguration::AspectRatio to_rt64(ultramodern::renderer::AspectRatio 
         return RT64::UserConfiguration::AspectRatio::Manual;
     case ultramodern::renderer::AspectRatio::OptionCount:
         return RT64::UserConfiguration::AspectRatio::OptionCount;
-    }
-}
-
-RT64::UserConfiguration::Antialiasing to_rt64(ultramodern::renderer::Antialiasing option) {
-    switch (option) {
-    case ultramodern::renderer::Antialiasing::None:
-        return RT64::UserConfiguration::Antialiasing::None;
-    case ultramodern::renderer::Antialiasing::MSAA2X:
-        return RT64::UserConfiguration::Antialiasing::MSAA2X;
-    case ultramodern::renderer::Antialiasing::MSAA4X:
-        return RT64::UserConfiguration::Antialiasing::MSAA4X;
-    case ultramodern::renderer::Antialiasing::MSAA8X:
-        return RT64::UserConfiguration::Antialiasing::MSAA8X;
-    case ultramodern::renderer::Antialiasing::OptionCount:
-        return RT64::UserConfiguration::Antialiasing::OptionCount;
     }
 }
 
@@ -278,7 +248,8 @@ void set_application_user_config(RT64::Application* application, const ultramode
     }
 
     application->userConfig.aspectRatio = to_rt64(config.ar_option);
-    application->userConfig.antialiasing = to_rt64(config.msaa_option);
+    // MSAA is not offered (see msaa_default in config.cpp).
+    application->userConfig.antialiasing = RT64::UserConfiguration::Antialiasing::None;
     application->userConfig.refreshRate = to_rt64(config.rr_option);
     application->userConfig.refreshRateTarget = config.rr_manual_value;
     application->userConfig.internalColorFormat = to_rt64(config.hpfb_option);
@@ -424,20 +395,6 @@ goemon64::renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::render
     // Set the application's fullscreen state.
     app->setFullScreen(cur_config.wm_option == ultramodern::renderer::WindowMode::Fullscreen);
 
-    // Check if the selected device actually supports MSAA sample positions and MSAA for for the formats that will be used
-    // and downgrade the configuration accordingly.
-    if (app->device->getCapabilities().sampleLocations) {
-        plume::RenderSampleCounts color_sample_counts = app->device->getSampleCountsSupported(plume::RenderFormat::R8G8B8A8_UNORM);
-        plume::RenderSampleCounts depth_sample_counts = app->device->getSampleCountsSupported(plume::RenderFormat::D32_FLOAT);
-        plume::RenderSampleCounts common_sample_counts = color_sample_counts & depth_sample_counts;
-        device_max_msaa = compute_max_supported_aa(common_sample_counts);
-        sample_positions_supported = true;
-    }
-    else {
-        device_max_msaa = RT64::UserConfiguration::Antialiasing::None;
-        sample_positions_supported = false;
-    }
-
     high_precision_fb_enabled = app->shaderLibrary->usesHDR;
 }
 
@@ -473,10 +430,6 @@ bool goemon64::renderer::RT64Context::update_config(const ultramodern::renderer:
     set_application_user_config(app.get(), new_config);
 
     app->updateUserConfig(true);
-
-    if (new_config.msaa_option != old_config.msaa_option) {
-        app->updateMultisampling();
-    }
     return true;
 }
 
@@ -569,16 +522,8 @@ void goemon64::renderer::RT64Context::check_texture_pack_actions() {
     }
 }
 
-RT64::UserConfiguration::Antialiasing goemon64::renderer::RT64MaxMSAA() {
-    return device_max_msaa;
-}
-
 std::unique_ptr<ultramodern::renderer::RendererContext> goemon64::renderer::create_render_context(uint8_t* rdram, ultramodern::renderer::WindowHandle window_handle, bool developer_mode) {
     return std::make_unique<goemon64::renderer::RT64Context>(rdram, window_handle, developer_mode);
-}
-
-bool goemon64::renderer::RT64SamplePositionsSupported() {
-    return sample_positions_supported;
 }
 
 bool goemon64::renderer::RT64HighPrecisionFBEnabled() {
