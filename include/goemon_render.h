@@ -54,16 +54,19 @@ namespace goemon64 {
 
         // Push stereoscopic 3D settings from the UI/config thread to the RT64
         // application thread. Values are clamped to valid slider ranges
-        // (separation: 0..100, convergence: 1..100, hudDepth: 0..100,
-        // autoConvergenceScale: 0..100). The change is applied atomically once
-        // per RT64 frame by an internal apply_pending_stereo_config helper.
-        void set_stereo_config(RT64::UserConfiguration::StereoMode mode, uint32_t separation, uint32_t convergence, uint32_t hudDepth, bool autoConvergence, uint32_t autoConvergenceScale);
+        // (separation: 0..50 clip-space points, convergence: 1..200 game units,
+        // hudDepth: 0..100, comfortTarget: 0..100 biased by +50, ghostContrast
+        // and ghostBlackFloor: 0..100 percent). The change is applied atomically
+        // once per RT64 frame by an internal apply_pending_stereo_config helper.
+        void set_stereo_config(RT64::UserConfiguration::StereoMode mode, uint32_t separation, uint32_t convergence,
+            uint32_t hudDepth, bool autoConvergence, uint32_t comfortTarget, uint32_t ghostContrast, uint32_t ghostBlackFloor);
 
         // Per-frame runtime signal from the game (via the recomp export
         // recomp_stereo_set_low_convergence_scene) indicating whether the
-        // current scene should use reduced convergence — used to soften
-        // stereo on FMVs / file select / first-person / minigames when the
-        // user has enabled auto-convergence.
+        // current scene frames things close — FMVs, file select, first-person,
+        // minigames. Under the depth-driven convergence loop this no longer
+        // scales convergence directly; it tightens the loop's comfort budget,
+        // so the two mechanisms compose instead of fighting.
         void set_stereo_runtime_low_convergence(bool active);
 
         // Texture pack enable option. Must be an enum with two options.

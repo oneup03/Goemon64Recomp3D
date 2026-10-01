@@ -5,6 +5,8 @@
 #include "goemon_support.h"
 #include "ultramodern/config.hpp"
 #include "librecomp/files.hpp"
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -250,10 +252,60 @@ bool save_general_config(const std::filesystem::path& path) {
         config_json["stereo_convergence"] = stereo.convergence;
         config_json["stereo_hud_depth"] = stereo.hudDepth;
         config_json["stereo_auto_convergence"] = stereo.autoConvergence;
-        config_json["stereo_auto_convergence_scale"] = stereo.autoConvergenceScale;
+        config_json["stereo_comfort_target"] = stereo.comfortTarget;
+        config_json["stereo_ghost_contrast"] = stereo.ghostContrast;
+        config_json["stereo_ghost_black_floor"] = stereo.ghostBlackFloor;
     }
 
     return save_json_with_backups(path, config_json);
+}
+
+// Bring a pre-clip-space stereo config forward.
+//
+// Separation and convergence used to be world-space quantities: the projection
+// shear was (sep_world / 2 / conv_world) * m[0][0] with sep_world = slider*0.02
+// and conv_world = slider*20. Under clip space the shear IS the separation, a
+// fraction of screen width, and convergence is a plain game-unit distance - so
+// the old slider values mean nothing in the new ranges and would clamp to
+// something arbitrary if carried across untouched.
+//
+// The tell that a config is a legacy one is the key that no longer exists:
+// "stereo_auto_convergence_scale" belonged to the old percentage-scaling
+// approximation that the depth-driven loop replaced.
+//
+// Two cases, because the exact conversion is only worth running on values
+// somebody actually chose:
+//   - Untouched (still the old defaults): adopt the new defaults. Converting
+//     them exactly would be faithful but useless - the old default measured out
+//     at about 0.12% of screen width of background disparity, which is close
+//     enough to flat that it would read as the 3D having broken.
+//   - Tuned: convert exactly per dynamic3d 2.2, then clamp into the new range.
+static void migrate_legacy_stereo_settings(const nlohmann::json& config_json, goemon64::StereoSettings& stereo) {
+    if (!config_json.contains("stereo_auto_convergence_scale")) {
+        return;
+    }
+
+    constexpr uint32_t legacy_default_separation = 50;
+    constexpr uint32_t legacy_default_convergence = 20;
+    const goemon64::StereoSettings defaults{};
+
+    if ((stereo.separation == legacy_default_separation) && (stereo.convergence == legacy_default_convergence)) {
+        stereo.separation = defaults.separation;
+        stereo.convergence = defaults.convergence;
+        return;
+    }
+
+    // dynamic3d 2.2. The old shear, including its 0.08 cap and the frozen
+    // reference projection scale, divided by the new slider step (0.002).
+    const float legacy_separation_world = static_cast<float>(stereo.separation) * 0.02f;
+    const float legacy_convergence_world = std::max(static_cast<float>(stereo.convergence) * 20.0f, 1.0f);
+    float eye_offset = 0.5f * legacy_separation_world / legacy_convergence_world;
+    eye_offset = std::min(eye_offset, 0.08f);
+    const float shear = eye_offset * 0.975f;
+    const long separation_slider = std::lround(shear / (0.10f / 50.0f));
+
+    stereo.separation = static_cast<uint32_t>(std::clamp<long>(separation_slider, 0, 50));
+    stereo.convergence = static_cast<uint32_t>(std::clamp<long>(std::lround(legacy_convergence_world), 1, 200));
 }
 
 void set_general_settings_from_json(const nlohmann::json& config_json) {
@@ -276,7 +328,10 @@ void set_general_settings_from_json(const nlohmann::json& config_json) {
         stereo.convergence = from_or_default(config_json, "stereo_convergence", stereo.convergence);
         stereo.hudDepth = from_or_default(config_json, "stereo_hud_depth", stereo.hudDepth);
         stereo.autoConvergence = from_or_default(config_json, "stereo_auto_convergence", stereo.autoConvergence);
-        stereo.autoConvergenceScale = from_or_default(config_json, "stereo_auto_convergence_scale", stereo.autoConvergenceScale);
+        stereo.comfortTarget = from_or_default(config_json, "stereo_comfort_target", stereo.comfortTarget);
+        stereo.ghostContrast = from_or_default(config_json, "stereo_ghost_contrast", stereo.ghostContrast);
+        stereo.ghostBlackFloor = from_or_default(config_json, "stereo_ghost_black_floor", stereo.ghostBlackFloor);
+        migrate_legacy_stereo_settings(config_json, stereo);
         goemon64::set_stereo_settings(stereo);
     }
 }

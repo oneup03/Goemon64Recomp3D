@@ -257,12 +257,15 @@ void goemon64::set_stereo_settings(const goemon64::StereoSettings &settings) {
         general_model_handle.DirtyVariable("stereo_convergence");
         general_model_handle.DirtyVariable("stereo_hud_depth");
         general_model_handle.DirtyVariable("stereo_auto_convergence");
-        general_model_handle.DirtyVariable("stereo_auto_convergence_scale");
+        general_model_handle.DirtyVariable("stereo_comfort_target");
+        general_model_handle.DirtyVariable("stereo_ghost_contrast");
+        general_model_handle.DirtyVariable("stereo_ghost_black_floor");
     }
     // Push the new settings to the renderer's atomic config bridge so the
     // RT64 application thread sees them on the next frame.
     goemon64::renderer::set_stereo_config(settings.mode, settings.separation, settings.convergence,
-        settings.hudDepth, settings.autoConvergence, settings.autoConvergenceScale);
+        settings.hudDepth, settings.autoConvergence, settings.comfortTarget,
+        settings.ghostContrast, settings.ghostBlackFloor);
 }
 
 int recomp::get_rumble_strength() {
@@ -678,14 +681,14 @@ public:
             [](Rml::Variant& out) { out = static_cast<int>(goemon64::get_stereo_settings().separation); },
             [](const Rml::Variant& in) {
                 auto s = goemon64::get_stereo_settings();
-                s.separation = std::clamp(in.Get<int>(), 0, 100);
+                s.separation = std::clamp(in.Get<int>(), 0, 50);
                 goemon64::set_stereo_settings(s);
             });
         constructor.BindFunc("stereo_convergence",
             [](Rml::Variant& out) { out = static_cast<int>(goemon64::get_stereo_settings().convergence); },
             [](const Rml::Variant& in) {
                 auto s = goemon64::get_stereo_settings();
-                s.convergence = std::clamp(in.Get<int>(), 1, 100);
+                s.convergence = std::clamp(in.Get<int>(), 1, 200);
                 goemon64::set_stereo_settings(s);
             });
         constructor.BindFunc("stereo_hud_depth",
@@ -708,11 +711,27 @@ public:
                 s.autoConvergence = (v != 0);
                 goemon64::set_stereo_settings(s);
             });
-        constructor.BindFunc("stereo_auto_convergence_scale",
-            [](Rml::Variant& out) { out = static_cast<int>(goemon64::get_stereo_settings().autoConvergenceScale); },
+        // Displayed as a signed value, stored biased by +50 so the whole chain
+        // down to the renderer's packed config word stays unsigned.
+        constructor.BindFunc("stereo_comfort_target",
+            [](Rml::Variant& out) { out = static_cast<int>(goemon64::get_stereo_settings().comfortTarget) - 50; },
             [](const Rml::Variant& in) {
                 auto s = goemon64::get_stereo_settings();
-                s.autoConvergenceScale = std::clamp(in.Get<int>(), 0, 100);
+                s.comfortTarget = static_cast<uint32_t>(std::clamp(in.Get<int>(), -20, 30) + 50);
+                goemon64::set_stereo_settings(s);
+            });
+        constructor.BindFunc("stereo_ghost_contrast",
+            [](Rml::Variant& out) { out = static_cast<int>(goemon64::get_stereo_settings().ghostContrast); },
+            [](const Rml::Variant& in) {
+                auto s = goemon64::get_stereo_settings();
+                s.ghostContrast = std::clamp(in.Get<int>(), 50, 100);
+                goemon64::set_stereo_settings(s);
+            });
+        constructor.BindFunc("stereo_ghost_black_floor",
+            [](Rml::Variant& out) { out = static_cast<int>(goemon64::get_stereo_settings().ghostBlackFloor); },
+            [](const Rml::Variant& in) {
+                auto s = goemon64::get_stereo_settings();
+                s.ghostBlackFloor = std::clamp(in.Get<int>(), 0, 20);
                 goemon64::set_stereo_settings(s);
             });
 

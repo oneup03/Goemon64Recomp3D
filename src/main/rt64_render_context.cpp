@@ -23,16 +23,24 @@ static bool high_precision_fb_enabled = false;
 // Stereo state pushed by set_stereo_config() and consumed by RT64Context before
 // the RT64 application advances a frame. Packed into a single atomic<uint64_t>
 // so all four values land coherently without a mutex.
-//   bits [15:0]  separation slider (0..100)
-//   bits [31:16] convergence slider (1..100)
+//   bits [15:0]  separation slider (0..50, clip-space points)
+//   bits [31:16] convergence slider (1..200, game units)
 //   bits [47:32] mode (StereoMode enum value)
 //   bits [63:48] HUD depth slider (0..100)
 static std::atomic<uint64_t> stereo_config_packed{0};
 
-// Auto-convergence pair packed into a second atomic.
-//   bits [7:0]  autoConvergenceScale slider (0..100)
-//   bits [8]    autoConvergence on/off
-static std::atomic<uint32_t> stereo_auto_packed{0};
+// Everything that didn't fit the four fields above, packed into a second
+// atomic. Kept separate so that one doesn't need repacking and so the runtime
+// scene flag can change at any frame without touching the user's configured
+// values.
+//   bits [7:0]   comfortTarget, biased by +50 (0..100 -> -50..+50)
+//   bits [8]     autoConvergence on/off
+//   bits [16:9]  ghostContrast slider (0..100, 100 = off)
+//   bits [24:17] ghostBlackFloor slider (0..100, 0 = off)
+// Initialised with ghostContrast = 100 (the no-op) rather than an all-zero
+// word: a zero contrast field would decode as a full squeeze to mid-grey if
+// anything read this before the host pushed its first configuration.
+static std::atomic<uint32_t> stereo_auto_packed{100u << 9};
 
 // Set by the game once per frame via recomp_stereo_set_low_convergence_scene.
 // Only consulted when auto-convergence is enabled; defaults to false so users
@@ -80,19 +88,31 @@ static void apply_pending_stereo_config(RT64::Application *app) {
     unpack_stereo_config(packed, mode, separation, convergence, hudDepth);
 
     const bool autoConvergence = (autoPacked & (1u << 8)) != 0u;
-    const uint32_t autoConvergenceScale = autoPacked & 0xFFu;
-    uint32_t effectiveConvergence = convergence;
-    if (autoConvergence && runtimeLowConv) {
-        // Round to nearest. Clamp to >=1 so downstream code that divides by
-        // convergence can't blow up.
-        const uint32_t scaled = (convergence * autoConvergenceScale + 50u) / 100u;
-        effectiveConvergence = std::max<uint32_t>(1u, scaled);
-    }
 
+    // Auto-convergence is now the renderer's depth-driven control loop
+    // (dynamic3d 4.3), which measures the nearest on-screen geometry directly.
+    // The scene classification the game pushes through
+    // set_stereo_runtime_low_convergence used to scale convergence here by a
+    // fixed percentage; that was an approximation standing in for a depth
+    // measurement, and running both compounds badly - the loop would see an
+    // already-scaled ceiling that moved whenever a cutscene or menu toggled the
+    // classification, and chase it instead of the scene. It now tightens the
+    // loop's comfort budget instead, further down.
+    //
+    // runtimeLowConv is still read above, because it takes part in the
+    // composite key that decides whether the configuration needs pushing.
     app->userConfig.stereoMode = mode;
     app->userConfig.stereoSeparation = separation;
-    app->userConfig.stereoConvergence = effectiveConvergence;
+    app->userConfig.stereoConvergence = convergence;
     app->userConfig.stereoHudDepth = hudDepth;
+    app->userConfig.stereoGhostContrast = (autoPacked >> 9) & 0xFFu;
+    app->userConfig.stereoGhostBlackFloor = (autoPacked >> 17) & 0xFFu;
+    app->userConfig.stereoAutoConvergence = autoConvergence ? 1u : 0u;
+    app->userConfig.stereoConvergenceManual = convergence;
+    // The packed slot is 8 unsigned bits and the comfort target is signed, so it
+    // travels biased by +50 and is un-biased here.
+    app->userConfig.stereoComfortTarget = int32_t(autoPacked & 0xFFu) - 50;
+    app->userConfig.stereoSceneLowConvergence = runtimeLowConv ? 1u : 0u;
     // Propagate into sharedQueueResources->userConfig so the workload and present
     // threads see the new values. discardFBs=false: stereo doesn't change render
     // target resolution or framebuffer layout.
@@ -100,13 +120,17 @@ static void apply_pending_stereo_config(RT64::Application *app) {
     stereo_config_last_applied.store(compositeKey, std::memory_order_relaxed);
 }
 
-void goemon64::renderer::set_stereo_config(RT64::UserConfiguration::StereoMode mode, uint32_t separation, uint32_t convergence, uint32_t hudDepth, bool autoConvergence, uint32_t autoConvergenceScale) {
-    separation = std::clamp<uint32_t>(separation, 0, 100);
-    convergence = std::clamp<uint32_t>(convergence, 1, 100);
+void goemon64::renderer::set_stereo_config(RT64::UserConfiguration::StereoMode mode, uint32_t separation, uint32_t convergence,
+    uint32_t hudDepth, bool autoConvergence, uint32_t comfortTarget, uint32_t ghostContrast, uint32_t ghostBlackFloor) {
+    separation = std::clamp<uint32_t>(separation, 0, 50);
+    convergence = std::clamp<uint32_t>(convergence, 1, 200);
     hudDepth = std::clamp<uint32_t>(hudDepth, 0, 100);
-    autoConvergenceScale = std::clamp<uint32_t>(autoConvergenceScale, 0, 100);
+    comfortTarget = std::clamp<uint32_t>(comfortTarget, 0, 100);
+    ghostContrast = std::clamp<uint32_t>(ghostContrast, 0, 100);
+    ghostBlackFloor = std::clamp<uint32_t>(ghostBlackFloor, 0, 100);
     stereo_config_packed.store(pack_stereo_config(mode, separation, convergence, hudDepth), std::memory_order_relaxed);
-    const uint32_t autoPacked = (autoConvergence ? (1u << 8) : 0u) | (autoConvergenceScale & 0xFFu);
+    const uint32_t autoPacked = (autoConvergence ? (1u << 8) : 0u) | (comfortTarget & 0xFFu) |
+        ((ghostContrast & 0xFFu) << 9) | ((ghostBlackFloor & 0xFFu) << 17);
     stereo_auto_packed.store(autoPacked, std::memory_order_relaxed);
 }
 

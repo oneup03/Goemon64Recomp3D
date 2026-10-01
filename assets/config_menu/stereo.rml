@@ -78,7 +78,7 @@
                                 id="stereo_separation_input"
                                 type="range"
                                 min="0"
-                                max="100"
+                                max="50"
                                 style="flex:1;margin: 0dp;nav-up:#stereo_off;nav-down:#stereo_convergence_input;"
                                 data-value="stereo_separation"
                             />
@@ -95,7 +95,7 @@
                                 id="stereo_convergence_input"
                                 type="range"
                                 min="1"
-                                max="100"
+                                max="200"
                                 style="flex:1;margin: 0dp;nav-up:#stereo_separation_input;nav-down:#stereo_hud_depth_input;"
                                 data-value="stereo_convergence"
                             />
@@ -126,32 +126,67 @@
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(4)"
                                 name="stereo_auto" data-checked="stereo_auto_convergence" value="0" id="stereo_auto_off"
-                                data-attr-style="stereo_auto_convergence == '1' ? 'nav-up:#stereo_hud_depth_input;nav-down:#stereo_auto_scale_input' : 'nav-up:#stereo_hud_depth_input'"
+                                data-attr-style="stereo_auto_convergence == '1' ? 'nav-up:#stereo_hud_depth_input;nav-down:#stereo_comfort_target_input' : 'nav-up:#stereo_hud_depth_input;nav-down:#stereo_ghost_contrast_input'"
                             />
                             <label class="config-option__tab-label" for="stereo_auto_off">Off</label>
                             <input type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(4)"
                                 name="stereo_auto" data-checked="stereo_auto_convergence" value="1" id="stereo_auto_on"
-                                data-attr-style="stereo_auto_convergence == '1' ? 'nav-up:#stereo_hud_depth_input;nav-down:#stereo_auto_scale_input' : 'nav-up:#stereo_hud_depth_input'"
+                                data-attr-style="stereo_auto_convergence == '1' ? 'nav-up:#stereo_hud_depth_input;nav-down:#stereo_comfort_target_input' : 'nav-up:#stereo_hud_depth_input;nav-down:#stereo_ghost_contrast_input'"
                             />
                             <label class="config-option__tab-label" for="stereo_auto_on">On</label>
                         </div>
                     </div>
 
                     <div class="config-option" data-if="stereo_mode != '0' &amp;&amp; stereo_auto_convergence == '1'" data-event-mouseover="set_cur_config_index(5)">
-                        <label class="config-option__title">Auto-Convergence Scale</label>
+                        <label class="config-option__title">Comfort Target</label>
                         <div class="config-option__range-wrapper config-option__list">
-                            <label class="config-option__range-label">{{stereo_auto_convergence_scale}}%</label>
+                            <label class="config-option__range-label">{{stereo_comfort_target}}</label>
                             <input
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(5)"
-                                id="stereo_auto_scale_input"
+                                id="stereo_comfort_target_input"
+                                type="range"
+                                min="-20"
+                                max="30"
+                                style="flex:1;margin: 0dp;nav-up:#stereo_auto_off;nav-down:#stereo_ghost_contrast_input;"
+                                data-value="stereo_comfort_target"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="config-option" data-if="stereo_mode != '0'" data-event-mouseover="set_cur_config_index(6)">
+                        <label class="config-option__title">Ghost Reduction: Contrast</label>
+                        <div class="config-option__range-wrapper config-option__list">
+                            <label class="config-option__range-label">{{stereo_ghost_contrast}}%</label>
+                            <input
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(6)"
+                                id="stereo_ghost_contrast_input"
+                                type="range"
+                                min="50"
+                                max="100"
+                                style="flex:1;margin: 0dp;nav-up:#stereo_auto_off;nav-down:#stereo_ghost_black_floor_input;"
+                                data-attr-style="stereo_auto_convergence == '1' ? 'flex:1;margin: 0dp;nav-up:#stereo_comfort_target_input;nav-down:#stereo_ghost_black_floor_input' : 'flex:1;margin: 0dp;nav-up:#stereo_auto_off;nav-down:#stereo_ghost_black_floor_input'"
+                                data-value="stereo_ghost_contrast"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="config-option" data-if="stereo_mode != '0'" data-event-mouseover="set_cur_config_index(7)">
+                        <label class="config-option__title">Ghost Reduction: Black Floor</label>
+                        <div class="config-option__range-wrapper config-option__list">
+                            <label class="config-option__range-label">{{stereo_ghost_black_floor}}%</label>
+                            <input
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(7)"
+                                id="stereo_ghost_black_floor_input"
                                 type="range"
                                 min="0"
-                                max="100"
-                                style="flex:1;margin: 0dp;nav-up:#stereo_auto_off;"
-                                data-value="stereo_auto_convergence_scale"
+                                max="20"
+                                style="flex:1;margin: 0dp;nav-up:#stereo_ghost_contrast_input;"
+                                data-value="stereo_ghost_black_floor"
                             />
                         </div>
                     </div>
@@ -171,19 +206,25 @@
                         <b>Note:</b> Stereo 3D is incompatible with MSAA. Disable MSAA in the Graphics tab before enabling a stereo mode.
                     </p>
                     <p data-if="cur_config_index == 1">
-                        Inter-eye separation (0..100). Higher values exaggerate the depth effect but may cause eye strain. Defaults to 50.
+                        How far apart the two eyes are, i.e. how strong the 3D effect is (0..50). Each point is <b>0.2%</b> of the screen width, so the default 10 is a comfortable 2% and the maximum 50 is 10% &mdash; about the point where your eyes would have to diverge to fuse the image. Defaults to 10.
                     </p>
                     <p data-if="cur_config_index == 2">
-                        Convergence distance (1..100). The depth at which objects sit on the screen plane. Objects closer pop out, objects farther push back. Defaults to 20.
+                        Convergence distance in game units (1..200). The depth at which objects sit exactly on the screen plane. Objects closer pop out, objects farther push back. It does not change how deep the background sits &mdash; only what is in front of the screen. Defaults to 20.
                     </p>
                     <p data-if="cur_config_index == 3">
                         HUD depth (0..100). <b>50</b> places the HUD on the screen plane. Below 50 pushes the HUD behind the screen; above 50 makes it pop out toward you. Defaults to 35.
                     </p>
                     <p data-if="cur_config_index == 4">
-                        When <b>On</b>, the game tells the renderer to reduce convergence in scenes where strong depth feels uncomfortable (FMVs, file select, minigames, first-person views).
+                        When <b>On</b>, the renderer samples the depth buffer and pulls the screen plane in whenever the nearest thing on screen would pop out past the Comfort Target. Your convergence slider stays the ceiling &mdash; this only ever moves the screen plane closer, never further.
                     </p>
                     <p data-if="cur_config_index == 5">
-                        How much to scale convergence in auto-detected low-convergence scenes. <b>25%</b> means convergence is dropped to a quarter of the user-set value in those scenes.
+                        How far the nearest thing on screen may pop out before <b>Auto-Convergence</b> pulls the screen plane in, in tenths of a percent of screen width. <b>0</b> puts the screen plane right on the nearest object; <b>negative</b> values push it in front of that, so the whole scene sits behind the screen. Cutscenes and menus tighten this automatically.
+                    </p>
+                    <p data-if="cur_config_index == 6">
+                        Reduces cross-talk (a faint copy of one eye&apos;s image bleeding into the other) by squeezing contrast toward mid-grey. <b>100%</b> is off. Lower values reduce ghosting at the cost of overall contrast &mdash; try 90% first.
+                    </p>
+                    <p data-if="cur_config_index == 7">
+                        Reduces cross-talk by raising the black level. <b>0%</b> is off. Only helps on displays that cancel cross-talk themselves (autostereoscopic panels in particular), where it gives the correction room to work without clipping. Blacks go grey quickly above 5%.
                     </p>
                 </div>
             </div>

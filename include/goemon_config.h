@@ -94,11 +94,30 @@ namespace goemon64 {
     // Stereoscopic 3D settings.
     struct StereoSettings {
         RT64::UserConfiguration::StereoMode mode = RT64::UserConfiguration::StereoMode::Off;
-        uint32_t separation = 50;
+        // Clip-space separation, 0..50. Each point is 0.2% of screen width of
+        // background disparity, so the range is 0..10% and the default is a
+        // comfortable 2%. This is the whole 3D-strength knob: it carries no FoV
+        // or convergence term, which is why the same number means the same
+        // thing on any display and at any aspect ratio.
+        uint32_t separation = 10;
+        // Zero-parallax distance in GAME UNITS, 1..200. Goemon's cameras sit
+        // close to the action, so the useful band is roughly 10..100.
         uint32_t convergence = 20;
+        // 50 = screen plane. Below pushes the HUD behind, above pops it out.
         uint32_t hudDepth = 35;
+        // Depth-driven auto-convergence: samples the depth buffer and pulls the
+        // screen plane in when the nearest on-screen object would pop out past
+        // the comfort target. The convergence slider stays the ceiling.
         bool autoConvergence = true;
-        uint32_t autoConvergenceScale = 25; // 0..100, applied when the game signals a low-convergence scene.
+        // Permitted pop-out before auto-convergence intervenes, in thousandths
+        // of screen width, biased by +50 so it survives the unsigned config and
+        // renderer bridge. 50 == 0, i.e. the screen plane lands exactly on the
+        // nearest object; below 50 puts it in front of that, so the whole scene
+        // sits behind the screen.
+        uint32_t comfortTarget = 55;
+        // Ghost reduction (anti-crosstalk). 100 / 0 are the exact no-ops.
+        uint32_t ghostContrast = 100;
+        uint32_t ghostBlackFloor = 0;
     };
     StereoSettings get_stereo_settings();
     void set_stereo_settings(const StereoSettings &settings);
