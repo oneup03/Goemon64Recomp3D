@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstring>
 
 #include "recomp.h"
 #include "librecomp/overlays.hpp"
@@ -22,8 +23,18 @@ extern "C" void recomp_puts(uint8_t* rdram, recomp_context* ctx) {
     PTR(char) cur_str = _arg<0, PTR(char)>(rdram, ctx);
     u32 length = _arg<1, u32>(rdram, ctx);
 
+    bool newline = false;
     for (u32 i = 0; i < length; i++) {
-        fputc(MEM_B(i, (gpr)cur_str), stdout);
+        const char c = MEM_B(i, (gpr)cur_str);
+        fputc(c, stdout);
+        newline = newline || (c == '\n');
+    }
+
+    // Flush per line. Redirected to a file, stdout is block-buffered, and any
+    // exit that skips the CRT's cleanup (quick_exit / _Exit on an error path)
+    // drops whatever patch output was still sitting in the buffer.
+    if (newline) {
+        fflush(stdout);
     }
 }
 
@@ -83,6 +94,21 @@ extern "C" void recomp_get_target_aspect_ratio(uint8_t* rdram, recomp_context* c
         case ultramodern::renderer::AspectRatio::Expand:
             _return(ctx, std::max(static_cast<float>(width) / height, original));
             return;
+    }
+}
+
+extern "C" void recomp_get_stereo_sky_params(uint8_t* rdram, recomp_context* ctx) {
+    float stereo_shift_ndc;
+    float interpolation_angle_limit;
+    float max_aspect;
+    goemon64::renderer::get_stereo_sky_params(stereo_shift_ndc, interpolation_angle_limit, max_aspect);
+
+    const float values[3] = { stereo_shift_ndc, interpolation_angle_limit, max_aspect };
+    for (int i = 0; i < 3; i++) {
+        gpr out = (i == 0) ? _arg<0, PTR(f32)>(rdram, ctx) : (i == 1) ? _arg<1, PTR(f32)>(rdram, ctx) : _arg<2, PTR(f32)>(rdram, ctx);
+        u32 bits;
+        std::memcpy(&bits, &values[i], sizeof(bits));
+        MEM_W(0, out) = bits;
     }
 }
 

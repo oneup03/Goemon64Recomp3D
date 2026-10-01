@@ -645,6 +645,7 @@ int main(int argc, char** argv) {
 
     REGISTER_FUNC(recomp_get_window_resolution);
     REGISTER_FUNC(recomp_get_target_aspect_ratio);
+    REGISTER_FUNC(recomp_get_stereo_sky_params);
     REGISTER_FUNC(recomp_get_target_framerate);
     // REGISTER_FUNC(recomp_get_autosave_enabled);
     REGISTER_FUNC(recomp_get_analog_cam_enabled);

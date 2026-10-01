@@ -69,6 +69,18 @@ namespace goemon64 {
         // so the two mechanisms compose instead of fighting.
         void set_stereo_runtime_low_convergence(bool active);
 
+        // What the stereo renderer does to a sky rect, for the sky scroll
+        // correction in patches/background.c, which has to compensate for it.
+        //   stereo_shift_ndc: the at-infinity stereo shift the renderer gives
+        //     a sky (separation as a fraction of screen width), 0 in mono.
+        //   interpolation_angle_limit: the largest rotation, in radians, the
+        //     renderer applies to a camera-tracking sky on an interpolated frame.
+        //   The patch draws such a sky far enough past each edge to cover both,
+        //     so neither uncovers an edge.
+        //   max_aspect: the cap on each eye's aspect ratio (16:9 in stereo, see
+        //     the Expand cap in rt64_workload_queue.cpp), or 0 for none.
+        void get_stereo_sky_params(float &stereo_shift_ndc, float &interpolation_angle_limit, float &max_aspect);
+
         // Texture pack enable option. Must be an enum with two options.
         // The first option is treated as disabled and the second option is treated as enabled.
         bool is_texture_pack_enable_config_option(const recomp::mods::ConfigOption& option, bool show_errors);
