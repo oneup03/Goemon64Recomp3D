@@ -52,6 +52,13 @@ endif()
 
 add_compile_definitions(HLSL_CPU)
 
+# The SDL 2.26.3 headers rt64 bundles for Windows define _m_prefetch themselves
+# under clang-cl, which newer clang (Visual Studio 18's) rejects as a
+# redefinition of its builtin. Defining their include guard skips it.
+if (WIN32)
+    add_compile_definitions(__PRFCHWINTRIN_H)
+endif()
+
 if (RECOMP_FLATPAK)
     add_compile_definitions(RECOMP_FLATPAK)
 endif()
