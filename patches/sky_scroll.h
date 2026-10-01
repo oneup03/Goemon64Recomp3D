@@ -4,8 +4,8 @@
 #include "patches.h"
 
 // The world camera as last handed to the projection setup (func_80017D8C_1898C,
-// via func_80016C44_17844's camera case), captured for the sky scroll
-// correction in background.c.
+// via func_80016C44_17844's camera case), captured for the 3D sky in
+// background.c.
 typedef struct SkyView {
     Vec3f position;
     Vec3f look_at;

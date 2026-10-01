@@ -138,27 +138,6 @@ void goemon64::renderer::set_stereo_runtime_low_convergence(bool active) {
     stereo_runtime_low_convergence.store(active, std::memory_order_relaxed);
 }
 
-void goemon64::renderer::get_stereo_sky_params(float &stereo_shift_ndc, float &interpolation_angle_limit, float &max_aspect) {
-    RT64::UserConfiguration::StereoMode mode;
-    uint32_t separation;
-    uint32_t convergence;
-    uint32_t hudDepth;
-    unpack_stereo_config(stereo_config_packed.load(std::memory_order_relaxed), mode, separation, convergence, hudDepth);
-    // The interpolation rotation applies to a camera-tracking sky in mono too:
-    // interpolated frames are not a stereo feature.
-    interpolation_angle_limit = RT64::SkyInterpolationAngleLimit;
-    if (mode == RT64::UserConfiguration::StereoMode::Off) {
-        stereo_shift_ndc = 0.0f;
-        max_aspect = 0.0f;
-        return;
-    }
-
-    // Same function the renderer derives the sky's stereo shift from, so the
-    // two cannot disagree about how far it moves.
-    stereo_shift_ndc = RT64::stereoSeparationFraction(separation);
-    max_aspect = 16.0f / 9.0f;
-}
-
 static uint8_t DMEM[0x1000];
 static uint8_t IMEM[0x1000];
 

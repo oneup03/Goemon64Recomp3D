@@ -1,6 +1,5 @@
 #include "patches.h"
 #include "graphics.h"
-#include "sky_debug.h"
 #include "sky_scroll.h"
 
 // @recomp
@@ -278,8 +277,8 @@ RECOMP_PATCH s32 func_80016C44_17844(Object *object)
             D_801684F0_1690F0 = aptr;
             func_8001B6D4_1C2D4(camera);
 
-            // @recomp Capture the world view for the sky scroll correction in
-            // background.c, which needs the camera's true heading and FoV.
+            // @recomp Capture the world view for the 3D sky in background.c,
+            // which needs the camera's true heading and FoV.
             if (camera != NULL) {
                 g_sky_view.position = camera->position;
                 g_sky_view.look_at = camera->look_at;
@@ -287,27 +286,6 @@ RECOMP_PATCH s32 func_80016C44_17844(Object *object)
                 g_sky_view.perspective = !(((u8 *)camera)[0x3E] & 1);
                 g_sky_view.step = g_game_step;
             }
-
-#if SKY_SCROLL_DEBUG
-            if (camera != NULL) {
-                // Field by field: a whole-struct assignment compiles to a
-                // memcpy call, which the recompiled patches cannot link.
-                g_sky_debug_camera.position = camera->position;
-                g_sky_debug_camera.look_at = camera->look_at;
-                g_sky_debug_camera.unknown_18 = camera->unknown_18;
-                g_sky_debug_camera.unknown_1a = camera->unknown_1a;
-                g_sky_debug_camera.unknown_1c = camera->unknown_1c;
-                g_sky_debug_camera.unknown_28 = camera->unknown_28;
-                g_sky_debug_camera.unknown_34 = camera->unknown_34;
-                g_sky_debug_camera.unknown_50 = camera->unknown_50;
-                g_sky_debug_camera.unknown_54 = camera->unknown_54;
-                g_sky_debug_camera.unknown_58 = camera->unknown_58;
-                g_sky_debug_camera.unknown_5c = camera->unknown_5c;
-                g_sky_debug_camera_addr = (u32)camera;
-                g_sky_debug_camera_frame = g_sky_debug_frame;
-                g_sky_debug_cam_calls++;
-            }
-#endif
             return 1;
 
         case 0x30000000:

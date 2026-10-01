@@ -1,5 +1,4 @@
 #include "patches.h"
-#include "sky_debug.h"
 #include "sky_scroll.h"
 #include "graphics.h"
 #include "transform_ids.h"
@@ -46,31 +45,7 @@ extern s32 D_8006D15C_6DD5C;
 extern s32 D_8006D160_6DD60; // g_background_width
 extern s32 D_8006D164_6DD64; // g_background_height
 
-// @recomp Sky scroll correction.
-//
-// Goemon's sky is a 2D panorama scrolled by camera yaw alone, measured as
-//     start_x = texture_width / 2 - yaw * texture_width / 360deg
-// (wrapping at texture_width). Translation plays no part, which is right for
-// something at infinity - but the RATE is not. The rect draws one texel per
-// screen unit across a 320-unit screen, so this mapping puts 180 degrees of sky
-// across one screen width, while the world's horizontal FoV is ~84 degrees at
-// 4:3. The sky therefore turns at about half the world's angular rate, which
-// reads as it being carried along with the camera - near - and contradicts the
-// at-infinity stereo depth it is given.
-//
-// The correct rate at screen centre is 160 * cot(fovy / 2) / aspect texels per
-// radian: the 160-unit half screen over tan of the half horizontal FoV, with
-// the aspect being the one the sky is actually stretched across. That makes a
-// full turn more than one texture width, so the panorama repeats ~1.7 times per
-// revolution and a given heading shows different sky on successive turns. That
-// is the price of a correct rate on a panorama painted for the wrong one, and a
-// far smaller cue than the sky turning with the camera.
-//
-// Only backgrounds whose start_x currently matches the game's yaw formula are
-// touched, so static backdrops and anything scrolled for another reason pass
-// through unchanged. Yaw comes from the camera vectors rather than from the
-// game's start_x, which is quantised to a 1024-step angle and would make the
-// faster-moving corrected sky visibly step.
+// @recomp Math for the 3D sky below.
 
 #define SKY_PI 3.14159265f
 
@@ -130,25 +105,6 @@ static BackgroundGraphicsNode *s_sky_node = NULL;
 static u8 *s_sky_texture = NULL;
 static u16 s_sky_flags = 0;
 static u32 s_sky_last_step = 0;
-static f32 s_sky_anchor_x = 0.0f;
-static f32 s_sky_prev_yaw = 0.0f;
-static f32 s_sky_accum_yaw = 0.0f;
-
-#if SKY_SCROLL_DEBUG
-static u32 s_sky_debug_detail_calls = 0;
-// What the last call decided: 0 = passed through (reason in the low bits),
-// 1 = corrected.
-static s32 s_sky_debug_result = 0;
-static f32 s_sky_debug_yaw = 0.0f;
-static f32 s_sky_debug_residual = 0.0f;
-static f32 s_sky_debug_rate = 0.0f;
-static f32 s_sky_debug_aspect = 0.0f;
-static f32 s_sky_debug_hfov = 0.0f;
-static f32 s_sky_debug_cover = 0.0f;
-#define SKY_DEBUG_RESULT(r) (s_sky_debug_result = (r))
-#else
-#define SKY_DEBUG_RESULT(r)
-#endif
 
 // @recomp The 3D sky.
 //
@@ -247,11 +203,9 @@ static int sky_track(BackgroundGraphicsNode *node) {
         ((node->texture_width % SKY_COLUMN_TEXELS) != 0) ||
         (((SKY_WRAPS_PER_TURN * node->texture_width) / SKY_COLUMN_TEXELS) + 1 > SKY_MAX_EDGES) ||
         ((node->texture_height / SKY_BAND_ROWS) + 2 > SKY_MAX_BANDS)) {
-        SKY_DEBUG_RESULT(-1);
         return 0;
     }
     if ((g_sky_view.step != g_game_step) || !g_sky_view.perspective || (g_sky_view.half_fovy == 0)) {
-        SKY_DEBUG_RESULT(-2);
         return 0;
     }
 
@@ -260,7 +214,6 @@ static int sky_track(BackgroundGraphicsNode *node) {
     dz = g_sky_view.look_at.z - g_sky_view.position.z;
     horizontal = sky_sqrt(dx * dx + dz * dz);
     if (horizontal < 1e-4f) {
-        SKY_DEBUG_RESULT(-3);
         return 0;
     }
 
@@ -276,13 +229,8 @@ static int sky_track(BackgroundGraphicsNode *node) {
     yaw = sky_atan2(dx, dz);
     predicted = sky_wrap(texture_width * 0.5f - yaw * texture_width / (2.0f * SKY_PI), texture_width);
     residual = sky_wrap_signed(node->start_x - predicted, texture_width);
-#if SKY_SCROLL_DEBUG
-    s_sky_debug_yaw = yaw;
-    s_sky_debug_residual = residual;
-#endif
     tolerance = continuing ? 6.0f : 1.0f;
     if ((residual > tolerance) || (residual < -tolerance)) {
-        SKY_DEBUG_RESULT(-4);
         return 0;
     }
 
@@ -311,14 +259,6 @@ static int sky_track(BackgroundGraphicsNode *node) {
         s_sky_anchor_cot = s_sky_cot;
     }
     s_sky_last_step = g_game_step;
-
-#if SKY_SCROLL_DEBUG
-    s_sky_debug_rate = s_sky_texels_per_radian;
-    s_sky_debug_aspect = 4.0f / 3.0f;
-    s_sky_debug_cover = 0.0f;
-    s_sky_debug_hfov = 2.0f * sky_atan2(1.0f, s_sky_cot) * (180.0f / SKY_PI);
-#endif
-    SKY_DEBUG_RESULT(1);
     return 1;
 }
 
@@ -685,32 +625,8 @@ RECOMP_PATCH void func_80021740_22340(BackgroundGraphicsNode* node)
 		 ((node->upper_left_corner_x + node->rectangle_width) >= (f32)(D_8006D160_6DD60 - 8)) &&
 		 ((node->upper_left_corner_y + node->rectangle_height) >= (f32)(D_8006D164_6DD64 - 8)));
 	if (sky_is_backdrop) {
-		gEXSetSkyboxRect(D_8015C5CC_15D1CC++, G_EX_SKYBOX_RECT_STATIC);
+		gEXSetSkyboxRect(D_8015C5CC_15D1CC++, 1);
 	}
-
-#if SKY_SCROLL_DEBUG
-	g_sky_debug_bg_calls++;
-	// Every 5th dispatcher call: the node's scroll and placement next to the
-	// camera most recently handed to the world projection. cf is the step that
-	// camera was captured on, so a stale one (from before this node drew) is
-	// visible. Counted on the dispatcher's own calls rather than gated on the
-	// game-step counter: backgrounds draw on alternate steps, so a modulus of
-	// that counter can land on steps where nothing draws and never fire.
-	if ((s_sky_debug_detail_calls++ % 5) == 0) {
-		const Camera *c = &g_sky_debug_camera;
-		recomp_printf("SKY f=%u node=%08X fl=%04X tex=%dx%d sx=%.3f sy=%.3f ul=%.1f,%.1f rect=%.1fx%.1f bg=%d,%d,%d,%d"
-			" cam=%08X cf=%u pos=%.3f,%.3f,%.3f at=%.3f,%.3f,%.3f s18=%d s1a=%d v1c=%.3f,%.3f,%.3f v28=%.3f,%.3f,%.3f f34=%.4f f50=%.4f,%.4f,%.4f,%.4f\n",
-			g_sky_debug_frame, (u32)node, node->flags, node->texture_width, node->texture_height,
-			node->start_x, node->start_y, node->upper_left_corner_x, node->upper_left_corner_y,
-			node->rectangle_width, node->rectangle_height,
-			D_8006D158_6DD58, D_8006D15C_6DD5C, D_8006D160_6DD60, D_8006D164_6DD64,
-			g_sky_debug_camera_addr, g_sky_debug_camera_frame,
-			c->position.x, c->position.y, c->position.z, c->look_at.x, c->look_at.y, c->look_at.z,
-			c->unknown_18, c->unknown_1a,
-			c->unknown_1c.x, c->unknown_1c.y, c->unknown_1c.z, c->unknown_28.x, c->unknown_28.y, c->unknown_28.z,
-			c->unknown_34, c->unknown_50, c->unknown_54, c->unknown_58, c->unknown_5c);
-	}
-#endif
 
 	if (!(node->flags & (1 << 13))) {
 		gSPSegment(D_8015C5CC_15D1CC++, 8, func_800141C4_14DC4(node->overlay_file_id));
@@ -747,17 +663,6 @@ RECOMP_PATCH void func_80021740_22340(BackgroundGraphicsNode* node)
 	if (sky_is_backdrop && !(node->flags & (1 << 14)) && !((node->flags & (1 << 2)) && !(node->flags & (1 << 3)))) {
 		sky_tracking = sky_track(node);
 	}
-
-#if SKY_SCROLL_DEBUG
-	// Paired with the SKY line above by f=. result: 1 corrected, -1 panorama
-	// path, -2 no usable camera this step, -3 degenerate camera, -4 start_x
-	// does not follow the yaw formula (residual shows by how much).
-	if (((s_sky_debug_detail_calls - 1) % 5) == 0) {
-		recomp_printf("SKYFIX f=%u result=%d game=%.3f fixed=%.3f yaw=%.4f resid=%.3f yaw3d=%.4f u0=%.3f rate=%.3f aspect=%.4f overhang=%.0f hfov=%.2f halffovy=%u\n",
-			g_sky_debug_frame, s_sky_debug_result, node->start_x, node->start_x, s_sky_debug_yaw, s_sky_debug_residual,
-			s_sky_yaw, s_sky_u_at_zero_bearing, s_sky_debug_rate, s_sky_debug_aspect, s_sky_debug_cover, s_sky_debug_hfov, g_sky_view.half_fovy);
-	}
-#endif
 
 	if (sky_tracking) {
 		sky_draw_3d(node);

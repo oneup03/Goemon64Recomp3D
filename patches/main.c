@@ -1,19 +1,9 @@
 #include "patches.h"
 #include "ui_funcs.h"
-#include "sky_debug.h"
 #include "sky_scroll.h"
 
 u32 g_game_step = 0;
 SkyView g_sky_view;
-
-#if SKY_SCROLL_DEBUG
-u32 g_sky_debug_frame = 0;
-Camera g_sky_debug_camera;
-u32 g_sky_debug_camera_addr = 0;
-u32 g_sky_debug_camera_frame = 0;
-u32 g_sky_debug_bg_calls = 0;
-u32 g_sky_debug_cam_calls = 0;
-#endif
 
 // @recomp Patched to enable RT64's extended GBI mode and set the correct refresh rate.
 //
@@ -40,16 +30,6 @@ RECOMP_PATCH void func_800012FC_1EFC()
     recomp_run_ui_callbacks();
 
     g_game_step++;
-
-#if SKY_SCROLL_DEBUG
-    g_sky_debug_frame++;
-    if ((g_sky_debug_frame % 60) == 0) {
-        recomp_printf("SKYHB f=%u bgcalls=%u camcalls=%u cam=%08X\n",
-            g_sky_debug_frame, g_sky_debug_bg_calls, g_sky_debug_cam_calls, g_sky_debug_camera_addr);
-        g_sky_debug_bg_calls = 0;
-        g_sky_debug_cam_calls = 0;
-    }
-#endif
 
     gEXEnable(D_8015C5CC_15D1CC++);
     // gEXSetRDRAMExtended(D_8015C5CC_15D1CC++, 1);
