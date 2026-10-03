@@ -66,3 +66,15 @@ RSPRecomp
 .idea
 build-*
 cmake-build-*
+# Nintendo 3DS build (platform/3ds)
+build-3ds/
+build-host/
+azahar-out/
+*.3dsx
+*.cia
+*.smdh
+*.bnr
+# Console logs and audio captures (AUDIO_CAPTURE.TXT: whole RDRAM dumps, game data): never committed
+/debug*/
+/log.txt
+/compile_commands.json

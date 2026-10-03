@@ -1,0 +1,28 @@
+# Title -> Start -> "Use Controller Pak" -> the Adventure Diary's slot 1
+# ("From the beginning") -> the opening, shots every 3-4 s. START at 1440
+# skips the intro song to the title screen (left alone, the title goes back
+# to the intro after about 10 s); START there opens the Controller Pak
+# question. The game needs the console to report a pak at boot: without one
+# it answers "The Controller Pak has now been connected. Please press the
+# Reset Button" instead.
+1440 4 START
+1560 SHOT title
+1620 4 START
+1710 SHOT pak1
+1800 SHOT pak2
+1890 SHOT pak3
+1980 4 A
+2070 SHOT diary1
+2160 SHOT diary2
+2250 4 A
+2340 SHOT opening1
+2430 SHOT opening2
+2520 4 A
+2610 SHOT opening3
+2700 SHOT opening4
+2790 4 A
+2880 SHOT opening5
+3000 SHOT opening6
+3120 SHOT opening7
+3240 SHOT opening8
+3600 EXIT

@@ -26,6 +26,34 @@ static bool is_mod_enabled_or_auto(const std::string &mod_id) {
     return recomp::mods::is_mod_enabled(mod_id) || recomp::mods::is_mod_auto_enabled(mod_id);
 }
 
+// A radio shows an enum's options by name and reports the chosen one by its
+// position, while the config stores the option's value.
+static std::vector<std::string> enum_option_names(const recomp::config::ConfigOptionEnum &option_enum) {
+    std::vector<std::string> names;
+    names.reserve(option_enum.options.size());
+    for (const recomp::config::ConfigOptionEnumOption &option : option_enum.options) {
+        names.push_back(option.name);
+    }
+    return names;
+}
+
+static std::vector<uint32_t> enum_option_values(const recomp::config::ConfigOptionEnum &option_enum) {
+    std::vector<uint32_t> values;
+    values.reserve(option_enum.options.size());
+    for (const recomp::config::ConfigOptionEnumOption &option : option_enum.options) {
+        values.push_back(option.value);
+    }
+    return values;
+}
+
+// The position of the option with this value; past the end (no selection) if none has it.
+static uint32_t enum_option_index(const recomp::config::ConfigOptionEnum &option_enum, uint32_t value) {
+    auto it = option_enum.find_option_from_value(value);
+    return static_cast<uint32_t>(it - option_enum.options.begin());
+}
+
+static const std::vector<std::string> bool_option_names = { "Off", "On" };
+
 // ModEntryView
 #define COL_TEXT_DEFAULT 242, 242, 242
 #define COL_TEXT_DIM 204, 204, 204
@@ -308,7 +336,7 @@ void ModMenu::mod_selected(uint32_t mod_index) {
 
     if (active_mod_index >= 0) {
         std::string thumbnail_src = generate_thumbnail_src_for_mod(mod_details[mod_index].mod_id);
-        const recomp::mods::ConfigSchema &config_schema = recomp::mods::get_mod_config_schema(mod_details[active_mod_index].mod_id);
+        const recomp::config::ConfigSchema &config_schema = recomp::mods::get_mod_config_schema(mod_details[active_mod_index].mod_id);
         bool toggle_checked = is_mod_enabled_or_auto(mod_details[mod_index].mod_id);
         bool auto_enabled = recomp::mods::is_mod_auto_enabled(mod_details[mod_index].mod_id);
         bool toggle_enabled = !auto_enabled && (mod_details[mod_index].runtime_toggleable || !ultramodern::is_game_started());
@@ -447,14 +475,24 @@ ContextId get_config_sub_menu_context_id() {
     return sub_menu_context;
 }
 
-bool ModMenu::handle_special_config_options(const recomp::mods::ConfigOption& option, const recomp::mods::ConfigValueVariant& config_value) {
+bool ModMenu::handle_special_config_options(const recomp::config::ConfigOption& option, const recomp::config::ConfigValueVariant& config_value) {
     if (goemon64::renderer::is_texture_pack_enable_config_option(option, true)) {
-        const recomp::mods::ConfigOptionEnum &option_enum = std::get<recomp::mods::ConfigOptionEnum>(option.variant);
+        if (option.type == recomp::config::ConfigOptionType::Bool) {
+            config_sub_menu->add_radio_option(option.id, option.name, option.description, std::get<bool>(config_value) ? 1 : 0, bool_option_names,
+                [this](const std::string &id, uint32_t index) {
+                    mod_bool_option_changed(id, index != 0);
+                    mod_hd_textures_enabled_changed(index);
+                });
+            return true;
+        }
 
-        config_sub_menu->add_radio_option(option.id, option.name, option.description, std::get<uint32_t>(config_value), option_enum.options,
-            [this](const std::string &id, uint32_t value) {
-                mod_enum_option_changed(id, value);
-                mod_hd_textures_enabled_changed(value);
+        const recomp::config::ConfigOptionEnum &option_enum = std::get<recomp::config::ConfigOptionEnum>(option.variant);
+        config_sub_menu->add_radio_option(option.id, option.name, option.description, enum_option_index(option_enum, std::get<uint32_t>(config_value)), enum_option_names(option_enum),
+            [this, values = enum_option_values(option_enum)](const std::string &id, uint32_t index) {
+                if (index < values.size()) {
+                    mod_enum_option_changed(id, values[index]);
+                    mod_hd_textures_enabled_changed(index);
+                }
             });
 
         return true;
@@ -473,9 +511,9 @@ void ModMenu::mod_configure_requested() {
         sub_menu_context.open();
         config_sub_menu->clear_options();
 
-        const recomp::mods::ConfigSchema &config_schema = recomp::mods::get_mod_config_schema(mod_details[active_mod_index].mod_id);
-        for (const recomp::mods::ConfigOption &option : config_schema.options) {
-            recomp::mods::ConfigValueVariant config_value = recomp::mods::get_mod_config_value(mod_details[active_mod_index].mod_id, option.id);
+        const recomp::config::ConfigSchema &config_schema = recomp::mods::get_mod_config_schema(mod_details[active_mod_index].mod_id);
+        for (const recomp::config::ConfigOption &option : config_schema.options) {
+            recomp::config::ConfigValueVariant config_value = recomp::mods::get_mod_config_value(mod_details[active_mod_index].mod_id, option.id);
             if (std::holds_alternative<std::monostate>(config_value)) {
                 continue;
             }
@@ -485,21 +523,30 @@ void ModMenu::mod_configure_requested() {
             }
 
             switch (option.type) {
-            case recomp::mods::ConfigOptionType::Enum: {
-                const recomp::mods::ConfigOptionEnum &option_enum = std::get<recomp::mods::ConfigOptionEnum>(option.variant);
-                config_sub_menu->add_radio_option(option.id, option.name, option.description, std::get<uint32_t>(config_value), option_enum.options,
-                    [this](const std::string &id, uint32_t value){ mod_enum_option_changed(id, value); });
+            case recomp::config::ConfigOptionType::Enum: {
+                const recomp::config::ConfigOptionEnum &option_enum = std::get<recomp::config::ConfigOptionEnum>(option.variant);
+                config_sub_menu->add_radio_option(option.id, option.name, option.description, enum_option_index(option_enum, std::get<uint32_t>(config_value)), enum_option_names(option_enum),
+                    [this, values = enum_option_values(option_enum)](const std::string &id, uint32_t index){
+                        if (index < values.size()) {
+                            mod_enum_option_changed(id, values[index]);
+                        }
+                    });
                 break;
             }
-            case recomp::mods::ConfigOptionType::Number: {
-                const recomp::mods::ConfigOptionNumber &option_number = std::get<recomp::mods::ConfigOptionNumber>(option.variant);
+            case recomp::config::ConfigOptionType::Number: {
+                const recomp::config::ConfigOptionNumber &option_number = std::get<recomp::config::ConfigOptionNumber>(option.variant);
                 config_sub_menu->add_slider_option(option.id, option.name, option.description, std::get<double>(config_value), option_number.min, option_number.max, option_number.step, option_number.percent,
                     [this](const std::string &id, double value){ mod_number_option_changed(id, value); });
                 break;
             }
-            case recomp::mods::ConfigOptionType::String: {
+            case recomp::config::ConfigOptionType::String: {
                 config_sub_menu->add_text_option(option.id, option.name, option.description, std::get<std::string>(config_value),
                     [this](const std::string &id, const std::string &value){ mod_string_option_changed(id, value); });
+                break;
+            }
+            case recomp::config::ConfigOptionType::Bool: {
+                config_sub_menu->add_radio_option(option.id, option.name, option.description, std::get<bool>(config_value) ? 1 : 0, bool_option_names,
+                    [this](const std::string &id, uint32_t index){ mod_bool_option_changed(id, index != 0); });
                 break;
             }
             default:
@@ -521,6 +568,12 @@ void ModMenu::mod_configure_requested() {
 }
 
 void ModMenu::mod_enum_option_changed(const std::string &id, uint32_t value) {
+    if (active_mod_index >= 0) {
+        recomp::mods::set_mod_config_value(mod_details[active_mod_index].mod_id, id, value);
+    }
+}
+
+void ModMenu::mod_bool_option_changed(const std::string &id, bool value) {
     if (active_mod_index >= 0) {
         recomp::mods::set_mod_config_value(mod_details[active_mod_index].mod_id, id, value);
     }

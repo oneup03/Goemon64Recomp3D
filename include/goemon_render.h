@@ -27,6 +27,7 @@ namespace goemon64 {
 
             void enable_instant_present() override;
             void send_dl(const OSTask *task) override;
+            void send_dummy_workload(uint32_t fb_address) override;
             void update_screen() override;
             void shutdown() override;
             uint32_t get_display_framerate() const override;
@@ -67,9 +68,9 @@ namespace goemon64 {
         // so the two mechanisms compose instead of fighting.
         void set_stereo_runtime_low_convergence(bool active);
 
-        // Texture pack enable option. Must be an enum with two options.
-        // The first option is treated as disabled and the second option is treated as enabled.
-        bool is_texture_pack_enable_config_option(const recomp::mods::ConfigOption& option, bool show_errors);
+        // Texture pack enable option. Must be an enum with two options or a bool.
+        // An enum's first option is treated as disabled and its second option as enabled.
+        bool is_texture_pack_enable_config_option(const recomp::config::ConfigOption& option, bool show_errors);
     }
 }
 

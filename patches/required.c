@@ -1,11 +1,28 @@
 #include "patches.h"
 #include "misc_funcs.h"
+#include "overlay_files.h"
 
 extern void overlay_apply_relocations(u32 file_id, u8 *load_addr);
 extern void *func_80014840_15440(void *, u32 file_id);
 extern void *func_80013B14_14714(unsigned short file_id);
 extern Task *D_8006D328_6DF28;
 extern void* func_080026B8_71FE88(void *arg);
+
+// @recomp The recompiled overlays come from the decompressed ROM layout, while the
+// game reads its files from the retail ROM (decompressing them itself, as on the
+// N64), so a file's ROM address is not its overlay's. Register a code file's
+// overlay by its file id instead (overlay_files.h); other files have no code.
+static void load_file_overlays(u32 file_id, u8 *buf_start)
+{
+    u32 i;
+
+    for (i = 0; i < sizeof(overlay_files) / sizeof(overlay_files[0]); i++) {
+        if (overlay_files[i].file_id == file_id) {
+            recomp_load_overlays(overlay_files[i].rom, (void *)buf_start, overlay_files[i].size);
+            return;
+        }
+    }
+}
 
 // @recomp Patched to load the overlay in the recomp runtime and to relocate TLB mapped overlays.
 RECOMP_PATCH u8 *func_80001C00_2800(u32 file_id, u8 *buf_start) 
@@ -39,7 +56,7 @@ RECOMP_PATCH u8 *func_80001C00_2800(u32 file_id, u8 *buf_start)
 
         if (file_size != 0) {
             // @recomp Load the overlay in the recomp runtime.
-            recomp_load_overlays(file_rom_addr, (void *)buf_start, file_size);
+            load_file_overlays(file_id, buf_start);
             
             if (D_800573D8_57FD8[cur_file_id] & FILE_COMP_MASK) {
                 buf_cur = func_80005394_5F94(file_rom_addr, buf_start, file_size);
@@ -68,6 +85,16 @@ RECOMP_PATCH u8 *func_80001C00_2800(u32 file_id, u8 *buf_start)
 
     // Sometimes used to determine where to next load a file.
     return buf_end;
+}
+
+// @recomp The game's LZKN64 decompressor ("memory_decompress") on the host
+// (src/game/file_decompression.cpp): recompiled, it spent a function call and a
+// dozen RAM accesses on every input byte, a seventh of a second for the
+// largest file on the 3DS, which every scene change loads. Same input reads
+// into the same ring buffer, same output, state and return value.
+RECOMP_PATCH u8 *func_80005394_5F94(u32 rom_addr, u8 *vram_addr, u32 size)
+{
+    return recomp_decompress_file(rom_addr, vram_addr, size);
 }
 
 // @recomp Patched to relocate TLB mapped addresses to their proper KSEG0 addresses so that the recomp runtime can find them.

@@ -1,0 +1,15 @@
+# Boot with the renderer: screenshots through the Konami logo, the intro song
+# and the title screen. START at 1440 skips the intro to the title, which
+# goes back to the intro by itself after about 10 s (and then plays a demo).
+# The intro's pace varies from run to run (its audio is CPU-bound), so START
+# may land on the title instead. Screenshots lag the SHOT lines by a few
+# seconds: keep 240 frames after the last one.
+240 SHOT logo1
+480 SHOT logo2
+720 SHOT intro1
+960 SHOT intro2
+1200 SHOT intro3
+1440 4 START
+1560 SHOT title1
+1740 SHOT title2
+1980 EXIT

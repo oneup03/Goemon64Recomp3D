@@ -1,6 +1,7 @@
 #include "patches.h"
 #include "graphics.h"
 #include "sky_scroll.h"
+#include "transform_ids.h"
 
 // @recomp
 Object *g_actor_skeleton_root_object = NULL;
@@ -11,7 +12,135 @@ u8 g_player_skip_interpolation = FALSE;
 
 Camera g_widescreen_camera;
 
+// @recomp The usual camera scissor is (8,16)-(312,224), but some cameras use
+// their own near-full-screen one (the Impact battles' camera: (10,14)-(310,240)).
+// On the N64 such borders sat in the TV's overscan, so any edge within 16 pixels
+// of the screen's goes to the edge and the scene fills a wide screen. Cutscenes'
+// cinematic letterboxing uses deeper bars than that and is kept.
+static void widen_camera_scissor(Camera *cam) {
+    if ((cam->scissor_ulx > 0) && (cam->scissor_ulx <= 16)) {
+        cam->scissor_ulx = 0;
+    }
+
+    if ((cam->scissor_uly > 0) && (cam->scissor_uly <= 16)) {
+        cam->scissor_uly = 0;
+    }
+
+    if ((cam->scissor_lrx >= SCREEN_WIDTH - 16) && (cam->scissor_lrx < SCREEN_WIDTH)) {
+        cam->scissor_lrx = SCREEN_WIDTH;
+    }
+
+    if ((cam->scissor_lry >= SCREEN_HEIGHT - 16) && (cam->scissor_lry < SCREEN_HEIGHT)) {
+        cam->scissor_lry = SCREEN_HEIGHT;
+    }
+}
+
+#ifdef GOEMON_3DS
+// @recomp The projection-group id for a camera's projection, for the 3DS port: rt64-3ds
+// classifies draws for stereo by projection-group id, the way the DK64 and Banjo ports tag
+// theirs (platform/3ds/main_3ds.cpp). Goemon draws some HUD items as small 3D models under a
+// private perspective camera parked near the origin and looking straight down -Z (measured at
+// (0, 0, -21) with a rotation within a few degrees of identity); the world camera is wherever
+// the scene is, pointed wherever the shot needs. Anything else is the world.
+static u32 goemon_projection_id_for_camera(const Camera *cam) {
+    f32 dx, dy, dz, limit;
+
+    if (cam == NULL) {
+        return PROJECTION_GAMEPLAY_TRANSFORM_ID;
+    }
+
+    if ((cam->position.x * cam->position.x + cam->position.y * cam->position.y + cam->position.z * cam->position.z) >= (200.0f * 200.0f)) {
+        return PROJECTION_GAMEPLAY_TRANSFORM_ID;
+    }
+
+    dx = cam->look_at.x - cam->position.x;
+    dy = cam->look_at.y - cam->position.y;
+    dz = cam->look_at.z - cam->position.z;
+    if (dz >= 0.0f) {
+        return PROJECTION_GAMEPLAY_TRANSFORM_ID;
+    }
+
+    // Within about 8.5 degrees of -Z.
+    limit = -dz * 0.15f;
+    if (dx < 0.0f) dx = -dx;
+    if (dy < 0.0f) dy = -dy;
+    if (dx > limit || dy > limit) {
+        return PROJECTION_GAMEPLAY_TRANSFORM_ID;
+    }
+
+    return PROJECTION_HUD_TRANSFORM_ID;
+}
+#endif
+
+#ifdef GOEMON_3DS
+// @recomp The same overscan rule for scissors that reach the frame's display list
+// without a camera: the Impact battles' overlay builds two small display lists of
+// its own every frame, a scissor and a fill rectangle clamped to (10,14)-(310,224)
+// (the world under a cinematic letterbox: (10,54)-(310,184)), and object nodes
+// copy them into the frame's list after the camera's widened scissor. Scissor
+// coordinates are 10.2 fixed point.
+static void widen_overscan_scissors(Gfx *start, Gfx *end) {
+    Gfx *g;
+
+    // The list only grows while an object is drawn; anything else is not ours to touch.
+    if ((end <= start) || ((end - start) > 0x4000)) {
+        return;
+    }
+
+    for (g = start; g < end; g++) {
+        u32 w0 = g->words.w0;
+        u32 w1 = g->words.w1;
+        u32 ulx, uly, lrx, lry;
+
+        if ((w0 >> 24) != G_SETSCISSOR) {
+            continue;
+        }
+
+        ulx = (w0 >> 12) & 0xFFF;
+        uly = w0 & 0xFFF;
+        lrx = (w1 >> 12) & 0xFFF;
+        lry = w1 & 0xFFF;
+
+        if ((ulx > 0) && (ulx <= (16 << 2))) {
+            ulx = 0;
+        }
+
+        if ((uly > 0) && (uly <= (16 << 2))) {
+            uly = 0;
+        }
+
+        if ((lrx >= ((SCREEN_WIDTH - 16) << 2)) && (lrx < (SCREEN_WIDTH << 2))) {
+            lrx = SCREEN_WIDTH << 2;
+        }
+
+        if ((lry >= ((SCREEN_HEIGHT - 16) << 2)) && (lry < (SCREEN_HEIGHT << 2))) {
+            lry = SCREEN_HEIGHT << 2;
+        }
+
+        g->words.w0 = (w0 & 0xFF000000) | (ulx << 12) | uly;
+        g->words.w1 = (w1 & 0xFF000000) | (lrx << 12) | lry;
+    }
+}
+
+static s32 draw_object_node(Object *object);
+
 RECOMP_PATCH s32 func_80016C44_17844(Object *object)
+{
+    const f32 original_aspect_ratio = (f32)SCREEN_WIDTH / (f32)SCREEN_HEIGHT;
+    Gfx *start = D_8015C5CC_15D1CC;
+    s32 ret = draw_object_node(object);
+
+    if (recomp_get_target_aspect_ratio(original_aspect_ratio) != original_aspect_ratio) {
+        widen_overscan_scissors(start, D_8015C5CC_15D1CC);
+    }
+
+    return ret;
+}
+
+static s32 draw_object_node(Object *object)
+#else
+RECOMP_PATCH s32 func_80016C44_17844(Object *object)
+#endif
 {
     u32 a;
     u32 *aptr;
@@ -237,29 +366,14 @@ RECOMP_PATCH s32 func_80016C44_17844(Object *object)
             // @recomp Fix the scissor so that RT64 can render in widescreen.
             if (recomp_get_target_aspect_ratio(original_aspect_ratio) != original_aspect_ratio) {
                 memcpy(&g_widescreen_camera, (Camera *)aptr, sizeof(Camera));
-
-                if (g_widescreen_camera.scissor_ulx == 8) {
-                    g_widescreen_camera.scissor_ulx = 0;
-                }
-
-                if (g_widescreen_camera.scissor_uly == 16) {
-                    g_widescreen_camera.scissor_uly = 0;
-                }
-
-                if (g_widescreen_camera.scissor_lrx == 312) {
-                    g_widescreen_camera.scissor_lrx = 320;
-                }
-
-                if (g_widescreen_camera.scissor_lry == 224) {
-                    g_widescreen_camera.scissor_lry = 240;
-                }
-
+                widen_camera_scissor(&g_widescreen_camera);
                 aptr = (u32 *)&g_widescreen_camera;
             }
 
             func_8001E380_1EF80(&D_801684B0_1690B0, D_801684A0_1690A0);
-            func_80017D8C_1898C((Camera *)aptr, &D_801684B0_1690B0);
 
+            // @recomp Resolve the camera before its projection is built: the 3DS port tags
+            // the projection by what the camera is, and the sky capture below reads it.
             if (aptr == NULL) {
                 camera = NULL;
             } else {
@@ -273,7 +387,18 @@ RECOMP_PATCH s32 func_80016C44_17844(Object *object)
                     }
                 }
             }
-            
+
+#ifdef GOEMON_3DS
+            // @recomp Tag the projection this camera is about to load (see
+            // goemon_projection_id_for_camera). As in the DK64 and Banjo ports the id is set,
+            // not pushed: it stays in force for the draws under this camera until the next
+            // camera's, and the interpreter clears it at the start of every task. The
+            // interpolation components are what RT64 gives the desktop's untagged camera
+            // (simple interpolation of everything), for rt64-3ds's interpolated frame rate.
+            gEXMatrixGroupSimpleNormal(D_8015C5CC_15D1CC++, goemon_projection_id_for_camera(camera), G_EX_NOPUSH, G_MTX_PROJECTION, G_EX_EDIT_NONE);
+#endif
+            func_80017D8C_1898C((Camera *)aptr, &D_801684B0_1690B0);
+
             D_801684F0_1690F0 = aptr;
             func_8001B6D4_1C2D4(camera);
 

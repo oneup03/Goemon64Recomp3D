@@ -79,7 +79,8 @@ public:
         );
         recompui::register_event(listener, "start_game",
             [](const std::string& param, Rml::Event& event) {
-                recomp::start_game(supported_games[0].game_id);
+                // Goemon has no game modes.
+                recomp::start_game(supported_games[0].game_id, std::string());
                 recompui::hide_all_contexts();
             }
         );

@@ -143,11 +143,16 @@ static u32 s_sky_last_step = 0;
 // row - so a camera that pitches up in a cutscene sees the top of the sky
 // rather than nothing.
 #define SKY_CAP_ELEVATION       (88.0f * SKY_PI / 180.0f)
+// The top cap stretches the panorama's top row only this far up, fading from
+// it to one sky colour (the top row's commonest): stretched all the way to the
+// pole, the sun and the clouds that touch the top row drew white streaks
+// across the dome.
+#define SKY_CAP_FADE            (6.0f * SKY_PI / 180.0f)
 // Pitch beyond which every column is drawn: looking steeply up or down, the
 // columns behind the camera come into view.
 #define SKY_CULL_PITCH_SIN      0.34f
 #define SKY_VISIBLE_HALF_ANGLE  (85.0f * SKY_PI / 180.0f)
-#define SKY_MAX_QUADS           400
+#define SKY_MAX_QUADS           480
 // Bounds for the per-frame corner tables: column edges around a turn, and row
 // boundaries down the panorama. sky_track rejects textures that exceed them.
 #define SKY_MAX_EDGES           129
@@ -158,10 +163,24 @@ static u32 s_sky_last_step = 0;
 // game's vertical scroll, the tangent of the camera's pitch and cot(fovy / 2)
 // when it was anchored.
 static f32 s_sky_u_at_zero_bearing = 0.0f;
+// The sky colour the top cap fades to (sky_measure_zenith), measured when the
+// cylinder is anchored.
+static u8 s_sky_zenith[3] = { 0, 0, 0 };
+static int s_sky_zenith_valid = 0;
 static f32 s_sky_texels_per_radian = 0.0f;
 static f32 s_sky_anchor_sy = 0.0f;
 static f32 s_sky_anchor_tan_pitch = 0.0f;
 static f32 s_sky_anchor_cot = 1.0f;
+// The camera heading at the call before, and its step: the game scrolls the
+// flat sky from the camera as it stood a frame earlier than the one it draws
+// with. Measured in Oedo Town with the camera turning: start_x matched the
+// previous frame's heading within 0.33 texels, the current one only within
+// 3.4 typically and 18 at worst, which flipped the sky between 3D and flat
+// on every quick turn.
+static f32 s_sky_prev_view_yaw = 0.0f;
+static f32 s_sky_prev_view_tan_pitch = 0.0f;
+static u32 s_sky_prev_view_step = 0;
+static int s_sky_prev_view_valid = 0;
 // The camera this step: heading, forward vector and cot(fovy / 2).
 static f32 s_sky_yaw = 0.0f;
 static f32 s_sky_forward[3] = { 0.0f, 0.0f, 1.0f };
@@ -190,11 +209,69 @@ static f32 sky_floor(f32 v) {
     return (t > v) ? (t - 1.0f) : t;
 }
 
+// The open sky's colour: the commonest texel of the panorama's top row (the
+// sun and the clouds that reach it are the minority there), decoded through
+// the palette for CI textures. 0 for a format it does not read.
+static int sky_measure_zenith(BackgroundGraphicsNode *node, u8 *rgb) {
+    u16 values[32];
+    u16 counts[32];
+    const s32 width = node->texture_width;
+    const int is_8b = (node->flags & (1 << 3)) != 0;
+    const int is_ci = (node->flags & (1 << 0)) != 0;
+    const int is_ia = !is_ci && ((node->flags & (1 << 1)) != 0);
+    int n = 0, i, best = -1;
+    s32 x;
+    u16 v;
+
+    if ((node->texture_data == NULL) || (width <= 0) || (is_ci && (!is_8b || (node->palette_data == NULL)))) {
+        return 0;
+    }
+    for (x = 0; x < width; x++) {
+        v = is_8b ? node->texture_data[x] : (u16)((node->texture_data[2 * x] << 8) | node->texture_data[2 * x + 1]);
+        for (i = 0; (i < n) && (values[i] != v); i++) {
+        }
+        if (i == n) {
+            if (n == 32) {
+                continue;
+            }
+            values[n] = v;
+            counts[n] = 0;
+            n++;
+        }
+        counts[i]++;
+    }
+    for (i = 0; i < n; i++) {
+        if ((best < 0) || (counts[i] > counts[best])) {
+            best = i;
+        }
+    }
+    if (best < 0) {
+        return 0;
+    }
+    v = values[best];
+    if (is_ia) {
+        const u8 intensity = is_8b ? (u8)((v >> 4) * 17) : (u8)(v >> 8);
+        rgb[0] = rgb[1] = rgb[2] = intensity;
+        return 1;
+    }
+    if (is_ci) {
+        v = (u16)((node->palette_data[2 * v] << 8) | node->palette_data[2 * v + 1]);
+    }
+    else if (is_8b) {
+        return 0;
+    }
+    // RGBA 5551.
+    rgb[0] = (u8)((((v >> 11) & 0x1F) << 3) | (((v >> 11) & 0x1F) >> 2));
+    rgb[1] = (u8)((((v >> 6) & 0x1F) << 3) | (((v >> 6) & 0x1F) >> 2));
+    rgb[2] = (u8)((((v >> 1) & 0x1F) << 3) | (((v >> 1) & 0x1F) >> 2));
+    return 1;
+}
+
 // Decides whether this background is the yaw-following sky and, if so,
 // anchors (first time) or updates the cylinder. Returns 1 to draw it in 3D.
 static int sky_track(BackgroundGraphicsNode *node) {
     const f32 texture_width = (f32)node->texture_width;
-    f32 dx, dy, dz, horizontal, yaw, predicted, residual, half_fovy, tolerance;
+    f32 dx, dy, dz, horizontal, yaw, scroll_yaw, scroll_tan_pitch, predicted, residual, half_fovy, tolerance;
     int continuing;
 
     // The panorama path (bit 15) uses start_x with different units, and the
@@ -229,6 +306,23 @@ static int sky_track(BackgroundGraphicsNode *node) {
     yaw = sky_atan2(dx, dz);
     predicted = sky_wrap(texture_width * 0.5f - yaw * texture_width / (2.0f * SKY_PI), texture_width);
     residual = sky_wrap_signed(node->start_x - predicted, texture_width);
+    // The heading the game scrolled with: this frame's, or (usually, while the
+    // camera turns) the frame before's, whichever start_x matches better.
+    scroll_yaw = yaw;
+    scroll_tan_pitch = dy / horizontal;
+    if (s_sky_prev_view_valid && (g_sky_view.step != s_sky_prev_view_step) && ((g_sky_view.step - s_sky_prev_view_step) <= 4)) {
+        const f32 predicted_prev = sky_wrap(texture_width * 0.5f - s_sky_prev_view_yaw * texture_width / (2.0f * SKY_PI), texture_width);
+        const f32 residual_prev = sky_wrap_signed(node->start_x - predicted_prev, texture_width);
+        if (((residual_prev < 0.0f) ? -residual_prev : residual_prev) < ((residual < 0.0f) ? -residual : residual)) {
+            residual = residual_prev;
+            scroll_yaw = s_sky_prev_view_yaw;
+            scroll_tan_pitch = s_sky_prev_view_tan_pitch;
+        }
+    }
+    s_sky_prev_view_yaw = yaw;
+    s_sky_prev_view_tan_pitch = dy / horizontal;
+    s_sky_prev_view_step = g_sky_view.step;
+    s_sky_prev_view_valid = 1;
     tolerance = continuing ? 6.0f : 1.0f;
     if ((residual > tolerance) || (residual < -tolerance)) {
         return 0;
@@ -253,10 +347,11 @@ static int sky_track(BackgroundGraphicsNode *node) {
         s_sky_texture = node->texture_data;
         s_sky_flags = node->flags;
         s_sky_texels_per_radian = (f32)SKY_WRAPS_PER_TURN * texture_width / (2.0f * SKY_PI);
-        s_sky_u_at_zero_bearing = node->start_x + 160.0f - node->upper_left_corner_x + yaw * s_sky_texels_per_radian;
+        s_sky_u_at_zero_bearing = node->start_x + 160.0f - node->upper_left_corner_x + scroll_yaw * s_sky_texels_per_radian;
         s_sky_anchor_sy = node->start_y;
-        s_sky_anchor_tan_pitch = dy / horizontal;
+        s_sky_anchor_tan_pitch = scroll_tan_pitch;
         s_sky_anchor_cot = s_sky_cot;
+        s_sky_zenith_valid = sky_measure_zenith(node, s_sky_zenith);
     }
     s_sky_last_step = g_game_step;
     return 1;
@@ -317,6 +412,13 @@ static void sky_set_vertex(Vtx *v, f32 x, f32 y, f32 z, f32 s, f32 t) {
     v->v.cn[3] = 0xFF;
 }
 
+static void sky_set_vertex_colour(Vtx *v, const u8 *rgb, u8 alpha) {
+    v->v.cn[0] = rgb[0];
+    v->v.cn[1] = rgb[1];
+    v->v.cn[2] = rgb[2];
+    v->v.cn[3] = alpha;
+}
+
 // One textured quad: a tile load covering texels [texel0, texel0 + column]
 // and rows [load_row0, load_row1] (plus a texel of overlap so bilinear
 // filtering at the edges samples neighbours rather than clamping), its four
@@ -324,7 +426,8 @@ static void sky_set_vertex(Vtx *v, f32 x, f32 y, f32 z, f32 s, f32 t) {
 // bottom-right, bottom-left.
 static void sky_emit_quad(Gfx **gfx, Vtx *v, BackgroundGraphicsNode *node, s32 image_format, s32 image_size,
                           f32 xa, f32 ya, f32 za, f32 xb, f32 yb, f32 zb, f32 xc, f32 yc, f32 zc, f32 xd, f32 yd, f32 zd,
-                          s32 texel0, f32 t_top, f32 t_bottom, s32 load_row0, s32 load_row1) {
+                          s32 texel0, f32 t_top, f32 t_bottom, s32 load_row0, s32 load_row1,
+                          const u8 *shade, u8 alpha_top, u8 alpha_bottom) {
     const s32 texture_width = node->texture_width;
     const s32 texture_height = node->texture_height;
     s32 load_s0 = (texel0 > 0) ? (texel0 - 1) : 0;
@@ -353,11 +456,51 @@ static void sky_emit_quad(Gfx **gfx, Vtx *v, BackgroundGraphicsNode *node, s32 i
     sky_set_vertex(&v[1], xb, yb, zb, (f32)(texel0 + SKY_COLUMN_TEXELS), t_top);
     sky_set_vertex(&v[2], xc, yc, zc, (f32)(texel0 + SKY_COLUMN_TEXELS), t_bottom);
     sky_set_vertex(&v[3], xd, yd, zd, (f32)texel0, t_bottom);
+    if (shade != NULL) {
+        // The top cap's fade (sky_draw_3d): the shade colour, its alpha the
+        // share of the texture.
+        sky_set_vertex_colour(&v[0], shade, alpha_top);
+        sky_set_vertex_colour(&v[1], shade, alpha_top);
+        sky_set_vertex_colour(&v[2], shade, alpha_bottom);
+        sky_set_vertex_colour(&v[3], shade, alpha_bottom);
+    }
     sky_vertex(gfx, v, 4);
     sky_quad(gfx);
 }
 
 void func_80022EC0_23AC0(BackgroundGraphicsNode *node);
+
+// The last combiner set in [start, end) of the frame's list, following calls
+// into display lists at KSEG0 addresses (func_80022EC0_23AC0 sets the
+// background's through one, 0x8006D0F0).
+static int sky_find_combine(Gfx *start, Gfx *end, u32 *w0, u32 *w1) {
+    Gfx *g;
+    int found = 0;
+    for (g = start; g < end; g++) {
+        const u32 op = g->words.w0 >> 24;
+        if (op == G_SETCOMBINE) {
+            *w0 = g->words.w0;
+            *w1 = g->words.w1;
+            found = 1;
+        }
+        else if ((op == G_DL) && ((g->words.w1 & 0xFF800000) == 0x80000000)) {
+            Gfx *c = (Gfx *)g->words.w1;
+            int i;
+            for (i = 0; i < 64; i++, c++) {
+                const u32 cop = c->words.w0 >> 24;
+                if (cop == G_SETCOMBINE) {
+                    *w0 = c->words.w0;
+                    *w1 = c->words.w1;
+                    found = 1;
+                }
+                else if (cop == G_ENDDL) {
+                    break;
+                }
+            }
+        }
+    }
+    return found;
+}
 
 static void sky_draw_3d(BackgroundGraphicsNode *node) {
     const s32 texture_width = node->texture_width;
@@ -375,6 +518,7 @@ static void sky_draw_3d(BackgroundGraphicsNode *node) {
     f32 u_start;
     int i;
     const int cull_columns = (s_sky_forward[1] < SKY_CULL_PITCH_SIN) && (s_sky_forward[1] > -SKY_CULL_PITCH_SIN);
+    u32 game_cc_w0 = 0, game_cc_w1 = 0;
 
     s_sky_buffer ^= 1;
 
@@ -432,7 +576,16 @@ static void sky_draw_3d(BackgroundGraphicsNode *node) {
     // The game's background state (palette, filtering, combiner), then what
     // triangles need on top: perspective-correct texturing, no depth (the sky
     // is drawn first, behind everything) and no lighting, culling or fog.
-    func_80022EC0_23AC0(node);
+    {
+        Gfx *state_start = D_8015C5CC_15D1CC;
+        func_80022EC0_23AC0(node);
+        // The game's combiner for the background, for the top cap's fade; if
+        // it cannot be found, its usual one (G_CC_DECALRGBA in both cycles).
+        if (!sky_find_combine(state_start, D_8015C5CC_15D1CC, &game_cc_w0, &game_cc_w1)) {
+            game_cc_w0 = 0xFCFFFFFF;
+            game_cc_w1 = 0xFFFCF279;
+        }
+    }
     gDPPipeSync(gfx++);
     gDPSetCycleType(gfx++, G_CYC_1CYCLE);
     gDPSetTexturePersp(gfx++, G_TP_PERSP);
@@ -460,9 +613,15 @@ static void sky_draw_3d(BackgroundGraphicsNode *node) {
         f32 band_y[SKY_MAX_BANDS];
         s32 band_row[SKY_MAX_BANDS];
         s32 band_count = 0;
-        f32 cap_radius[2][3];
-        f32 cap_y[2][3];
+        f32 cap_radius[2][4];
+        f32 cap_y[2][4];
+        s32 cap_rings[2];
         s32 k, b, cap, ring;
+        // The top cap fades to the sky colour (SKY_CAP_FADE): drawn after the
+        // rest, with its own combiner, for these columns.
+        const int top_fade = s_sky_zenith_valid;
+        s32 fade_column[SKY_MAX_EDGES];
+        s32 fade_count = 0;
 
         u_start = (f32)SKY_COLUMN_TEXELS * sky_floor((s_sky_u_at_zero_bearing - SKY_PI * K) / (f32)SKY_COLUMN_TEXELS);
         for (k = 0; k <= column_count; k++) {
@@ -491,15 +650,23 @@ static void sky_draw_3d(BackgroundGraphicsNode *node) {
 
         // The caps' rings: ring 0 is the cylinder's own edge (radius R at the
         // edge height), rings 1 and 2 step towards the pole on the sphere of the
-        // same directions.
+        // same directions. With the fade, the top cap's ring 1 is SKY_CAP_FADE
+        // above the edge and rings 2 and 3 step on to the pole.
         for (cap = 0; cap < 2; cap++) {
             const f32 edge_height = (cap == 0) ? band_y[0] : band_y[band_count - 1];
             const f32 edge_elevation = sky_atan2(edge_height, SKY_RADIUS);
             const f32 end_elevation = (cap == 0) ? SKY_CAP_ELEVATION : -SKY_CAP_ELEVATION;
+            f32 fade_elevation = edge_elevation + SKY_CAP_FADE;
+            if (fade_elevation > end_elevation) {
+                fade_elevation = end_elevation;
+            }
+            cap_rings[cap] = ((cap == 0) && top_fade) ? 3 : 2;
             cap_radius[cap][0] = SKY_RADIUS;
             cap_y[cap][0] = edge_height;
-            for (ring = 1; ring <= 2; ring++) {
-                f32 elevation = edge_elevation + (end_elevation - edge_elevation) * ((f32)ring / 2.0f);
+            for (ring = 1; ring <= cap_rings[cap]; ring++) {
+                f32 elevation = (cap_rings[cap] == 3) ?
+                    ((ring == 1) ? fade_elevation : fade_elevation + (end_elevation - fade_elevation) * ((f32)(ring - 1) / 2.0f)) :
+                    edge_elevation + (end_elevation - edge_elevation) * ((f32)ring / 2.0f);
                 // A cylinder edge already past the pole direction has nothing
                 // left to cap.
                 if (((cap == 0) && (elevation < edge_elevation)) || ((cap == 1) && (elevation > edge_elevation))) {
@@ -532,7 +699,7 @@ static void sky_draw_3d(BackgroundGraphicsNode *node) {
                 }
                 sky_emit_quad(&gfx, &vertices[quad_count * 4], node, image_format, image_size,
                     x0, band_y[b], z0, x1, band_y[b], z1, x1, band_y[b + 1], z1, x0, band_y[b + 1], z0,
-                    texel0, (f32)band_row[b], (f32)band_row[b + 1], band_row[b], band_row[b + 1]);
+                    texel0, (f32)band_row[b], (f32)band_row[b + 1], band_row[b], band_row[b + 1], NULL, 0xFF, 0xFF);
                 quad_count++;
             }
 
@@ -542,7 +709,11 @@ static void sky_draw_3d(BackgroundGraphicsNode *node) {
             for (cap = 0; cap < 2; cap++) {
                 const f32 t_edge = (cap == 0) ? 0.0f : (f32)texture_height;
                 const s32 edge_row = (cap == 0) ? 0 : (texture_height - 1);
-                for (ring = 0; ring < 2; ring++) {
+                if ((cap == 0) && top_fade) {
+                    fade_column[fade_count++] = column;
+                    continue;
+                }
+                for (ring = 0; ring < cap_rings[cap]; ring++) {
                     const f32 ra = cap_radius[cap][ring];
                     const f32 rb = cap_radius[cap][ring + 1];
                     const f32 xa0 = (ring == 0) ? x0 : (f32)sky_round(ra * dir_x[column]);
@@ -562,7 +733,43 @@ static void sky_draw_3d(BackgroundGraphicsNode *node) {
                     sky_emit_quad(&gfx, &vertices[quad_count * 4], node, image_format, image_size,
                         xa0, cap_y[cap][ring], za0, xa1, cap_y[cap][ring], za1,
                         xb1, cap_y[cap][ring + 1], zb1, xb0, cap_y[cap][ring + 1], zb0,
-                        texel0, t_edge, t_edge, edge_row, edge_row);
+                        texel0, t_edge, t_edge, edge_row, edge_row, NULL, 0xFF, 0xFF);
+                    quad_count++;
+                }
+            }
+        }
+
+        // The top cap with the fade: the game's combiner with its colour made
+        // (TEXEL0 - SHADE) * SHADE_ALPHA + SHADE in both cycles (its alpha, and
+        // so its fades, kept), the shade the sky colour, its alpha 255 at the
+        // panorama's edge and 0 from SKY_CAP_FADE above it.
+        if (fade_count > 0) {
+            gDPPipeSync(gfx++);
+            gfx->words.w0 = (game_cc_w0 & ~((0xFu << 20) | (0x1Fu << 15) | (0xFu << 5) | 0x1Fu)) |
+                (G_CCMUX_TEXEL0 << 20) | (G_CCMUX_SHADE_ALPHA << 15) | (G_CCMUX_TEXEL0 << 5) | G_CCMUX_SHADE_ALPHA;
+            gfx->words.w1 = (game_cc_w1 & ~((0xFu << 28) | (0xFu << 24) | (0x7u << 15) | (0x7u << 6))) |
+                ((u32)G_CCMUX_SHADE << 28) | (G_CCMUX_SHADE << 24) | (G_CCMUX_SHADE << 15) | (G_CCMUX_SHADE << 6);
+            gfx++;
+            gSPSetGeometryMode(gfx++, G_SHADE | G_SHADING_SMOOTH);
+            for (k = 0; k < fade_count; k++) {
+                const s32 c = fade_column[k];
+                const f32 u0 = u_start + (f32)(c * SKY_COLUMN_TEXELS);
+                const s32 texel0 = (s32)sky_wrap(u0, (f32)texture_width);
+                for (ring = 0; ring < cap_rings[0]; ring++) {
+                    const f32 ra = cap_radius[0][ring];
+                    const f32 rb = cap_radius[0][ring + 1];
+                    if (cap_y[0][ring] == cap_y[0][ring + 1]) {
+                        continue;
+                    }
+                    if (quad_count >= SKY_MAX_QUADS) {
+                        break;
+                    }
+                    sky_emit_quad(&gfx, &vertices[quad_count * 4], node, image_format, image_size,
+                        (f32)sky_round(ra * dir_x[c]), cap_y[0][ring], (f32)sky_round(ra * dir_z[c]),
+                        (f32)sky_round(ra * dir_x[c + 1]), cap_y[0][ring], (f32)sky_round(ra * dir_z[c + 1]),
+                        (f32)sky_round(rb * dir_x[c + 1]), cap_y[0][ring + 1], (f32)sky_round(rb * dir_z[c + 1]),
+                        (f32)sky_round(rb * dir_x[c]), cap_y[0][ring + 1], (f32)sky_round(rb * dir_z[c]),
+                        texel0, 0.0f, 0.0f, 0, 0, s_sky_zenith, (ring == 0) ? 0xFF : 0x00, 0x00);
                     quad_count++;
                 }
             }
@@ -625,7 +832,14 @@ RECOMP_PATCH void func_80021740_22340(BackgroundGraphicsNode* node)
 		 ((node->upper_left_corner_x + node->rectangle_width) >= (f32)(D_8006D160_6DD60 - 8)) &&
 		 ((node->upper_left_corner_y + node->rectangle_height) >= (f32)(D_8006D164_6DD64 - 8)));
 	if (sky_is_backdrop) {
+#ifdef GOEMON_3DS
+		// @recomp rt64-3ds records the projection group id on rectangles too, so a backdrop
+		// is tagged like the sky cylinder and a ProjKind::Rect rule puts it at infinity
+		// (platform/3ds/main_3ds.cpp). Pushed, so the camera's id returns afterwards.
+		gEXMatrixGroupSkipAll(D_8015C5CC_15D1CC++, PROJECTION_SKYBOX_TRANSFORM_ID, G_EX_PUSH, G_MTX_PROJECTION, G_EX_EDIT_NONE);
+#else
 		gEXSetSkyboxRect(D_8015C5CC_15D1CC++, 1);
+#endif
 	}
 
 	if (!(node->flags & (1 << 13))) {
@@ -664,6 +878,15 @@ RECOMP_PATCH void func_80021740_22340(BackgroundGraphicsNode* node)
 		sky_tracking = sky_track(node);
 	}
 
+#ifdef GOEMON_3DS
+	// @recomp The cylinder is up to 400 quads of the game's own CPU time a
+	// frame: the 3DS settings menu's Sky row can keep the flat scroll instead
+	// (the default on an Old 3DS).
+	if (sky_tracking && !recomp_get_sky_3d()) {
+		sky_tracking = 0;
+	}
+#endif
+
 	if (sky_tracking) {
 		sky_draw_3d(node);
 	} else if (node->flags & (1 << 14)) {
@@ -675,9 +898,15 @@ RECOMP_PATCH void func_80021740_22340(BackgroundGraphicsNode* node)
 	}
 
 
+#ifdef GOEMON_3DS
+	if (sky_is_backdrop) {
+		gEXPopMatrixGroup(D_8015C5CC_15D1CC++, G_MTX_PROJECTION);
+	}
+#else
 	// @recomp Clear the skybox-rect flag so subsequent rectangles (HUD,
 	// dialog, text, etc.) revert to the default HUD-depth stereo shift.
 	gEXSetSkyboxRect(D_8015C5CC_15D1CC++, 0);
+#endif
 }
 
 

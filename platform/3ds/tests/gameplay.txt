@@ -1,0 +1,59 @@
+# 30 fps gameplay: newgame.txt's way into the opening (title -> Start ->
+# "Use Controller Pak" -> the Adventure Diary's slot 1), then A through the
+# opening's dialogue until Goemon is under control in Oedo Town, then a walk
+# with the Circle Pad and turns with the C-Stick (the camera). The game asks
+# 30 fps from there; the opening's flight over the town asks 60.
+1440 4 START
+1560 SHOT title
+1620 4 START
+1710 SHOT pak1
+1980 4 A
+2070 SHOT diary1
+2250 4 A
+2340 SHOT opening1
+2520 4 A
+2790 4 A
+2880 SHOT opening2
+2940 4 A
+3000 4 A
+3060 4 A
+3120 4 A
+3180 4 A
+3240 SHOT dialogue1
+3300 4 A
+3360 4 A
+3420 4 A
+3480 4 A
+3540 4 A
+3600 SHOT dialogue2
+3660 4 A
+3720 4 A
+3780 4 A
+3840 4 A
+3900 4 A
+3960 SHOT dialogue3
+4020 4 A
+4080 4 A
+4140 4 A
+4200 4 A
+4260 4 A
+4320 SHOT dialogue4
+4380 4 A
+4440 4 A
+4500 4 A
+4560 4 A
+4620 4 A
+4680 SHOT control1
+4800 180 STICK_UP
+4950 SHOT walk1
+5040 60 STICK_LEFT
+5130 90 STICK_UP
+5250 SHOT walk2
+5340 60 CSTICK_LEFT
+5430 SHOT turn1
+5520 90 STICK_RIGHT
+5640 SHOT walk3
+5730 60 CSTICK_RIGHT
+5820 90 STICK_DOWN
+5940 SHOT walk4
+6060 EXIT

@@ -13,8 +13,9 @@
 	url = https://github.com/sammycage/lunasvg
 [submodule "lib/N64ModernRuntime"]
 	path = lib/N64ModernRuntime
-	url = https://github.com/klorfmorf/N64ModernRuntime.git
-	branch = goemon-patches
+	# Upstream, pinned at cdf5abb: what rt64-3ds's runtime patch series (lib/rt64-3ds/nmr-patches)
+	# is made against. The klorfmorf fork's changes are re-provided game-side in src/game/.
+	url = https://github.com/N64Recomp/N64ModernRuntime
 [submodule "Goemon64RecompSyms"]
 	path = Goemon64RecompSyms
 	url = https://github.com/klorfmorf/Goemon64RecompSyms
@@ -25,3 +26,6 @@
 	path = lib/SR-lib
 	url = https://github.com/bo3b/SR-lib.git
 	branch = api_expansion
+[submodule "lib/rt64-3ds"]
+	path = lib/rt64-3ds
+	url = https://github.com/oneup03/rt64-3ds.git

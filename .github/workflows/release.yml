@@ -349,9 +349,121 @@ jobs:
           path: Goemon64Recompiled3D-flatpak-${{ needs.recomp.outputs.sha_short }}.flatpak
           if-no-files-found: error
 
+  build-3ds:
+    name: Nintendo 3DS
+    needs: recomp
+    runs-on: ubuntu-latest
+    # devkitPro's image (Debian 12): devkitARM, libctru, citro3d, picasso and
+    # 3dstools, with DEVKITPRO/DEVKITARM exported. devkitPro asks that CI use
+    # its images rather than pacman.
+    container: devkitpro/devkitarm:latest
+    # Steps in a container job run under sh unless a shell is named
+    # (actions/runner#1533), and sh rejects `set -o pipefail`.
+    defaults:
+      run:
+        shell: bash
+    env:
+      # makerom and bannertool are not devkitPro packages, and their release
+      # binaries need a newer glibc than the image has, so both are built
+      # from pinned release tags.
+      MAKEROM_SRC: https://github.com/3DSGuy/Project_CTR/archive/refs/tags/makerom-v0.19.0.tar.gz
+      BANNERTOOL_SRC: https://github.com/carstene1ns/3ds-bannertool/archive/refs/tags/1.2.3.tar.gz
+    steps:
+      # Before the checkout, which needs git for the submodules. clang-15 and
+      # lld-15 build the MIPS patches, as in the Linux (x64) job; the host
+      # tools (N64Recomp, RSPRecomp) need a C++20 compiler, CMake and Ninja.
+      # p7zip-full, unzip, wget and xz-utils are for Clone deps, which the
+      # GitHub-hosted runners the other jobs use have preinstalled. Named
+      # even where the image has them.
+      - name: Install 3DS build deps
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git clang-15 lld-15 ccache cmake ninja-build g++ make \
+            curl zip ca-certificates p7zip-full unzip wget xz-utils
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # The runtime patch series (make nmr-patch) commits on a local branch:
+      # hence the identity. The container's checkout belongs to another user.
+      - name: Configure git
+        run: |
+          git config --global --add safe.directory '*'
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@users.noreply.github.com"
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ github.job }}-${{ env.N64RECOMP_COMMIT }}
+
+      - name: Clone deps
+        env:
+          DEPS_FETCH: ${{ secrets.DEPS_FETCH }}
+          DEPS_EXTRACT: ${{ secrets.DEPS_EXTRACT }}
+        run: |
+          eval "${DEPS_FETCH}"
+          eval "${DEPS_EXTRACT}"
+
+      - name: Build CIA tools
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ciatools/makerom /tmp/ciatools/bannertool
+          cd /tmp/ciatools
+          curl -fsSL "$MAKEROM_SRC" | tar -xz --strip-components=1 -C makerom
+          make -C makerom/makerom -j"$(nproc)" deps >/dev/null
+          make -C makerom/makerom -j"$(nproc)" >/dev/null
+          install -m 755 makerom/makerom/bin/makerom /usr/local/bin/makerom
+          curl -fsSL "$BANNERTOOL_SRC" | tar -xz --strip-components=1 -C bannertool
+          cmake -S bannertool -B bannertool/build -G Ninja -DCMAKE_BUILD_TYPE=Release >/dev/null
+          cmake --build bannertool/build >/dev/null
+          install -m 755 bannertool/build/bannertool /usr/local/bin/bannertool
+
+      # The 3DS build uses the runtime's own N64Recomp
+      # (lib/N64ModernRuntime/N64Recomp) after rt64-3ds's patch series is
+      # applied to the runtime.
+      - name: Build N64Recomp & RSPRecomp
+        run: make -C platform/3ds nmr-patch host-tools
+
+      # The game and the audio microcode as for the desktop, then the patches
+      # built with GOEMON_3DS.
+      - name: Run N64Recomp & RSPRecomp
+        run: make -C platform/3ds codegen PATCH_CC=clang-15 LLD=ld.lld-15
+
+      - name: Build Goemon64Recompiled3DS
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+        run: make -C platform/3ds cia
+
+      # The zip is laid out from the SD card's root (3ds/Goemon64/ with the
+      # .3dsx, where the player's ROM goes too); the CIA ships on its own. The
+      # Homebrew Launcher lists a folder's .3dsx when it has the folder's
+      # name: Goemon64.3dsx. Nothing ROM-derived is packaged.
+      - name: Package
+        run: |
+          set -euo pipefail
+          out=package/3ds/Goemon64
+          mkdir -p "$out"
+          cp build-3ds/Goemon64Recompiled3DS.3dsx "$out/Goemon64.3dsx"
+          cp platform/3ds/README.md "$out/"
+          (cd package && zip -q -r "../Goemon64Recompiled3D-3ds-${{ needs.recomp.outputs.sha_short }}.zip" 3ds)
+          cp build-3ds/Goemon64Recompiled3DS.cia "Goemon64Recompiled3D-3ds-${{ needs.recomp.outputs.sha_short }}.cia"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-3ds
+          path: |
+            Goemon64Recompiled3D-3ds-${{ needs.recomp.outputs.sha_short }}.zip
+            Goemon64Recompiled3D-3ds-${{ needs.recomp.outputs.sha_short }}.cia
+          if-no-files-found: error
+
   publish:
     name: Publish rolling release
-    needs: [recomp, build-windows, build-linux-x64, build-linux-arm64, build-linux-flatpak]
+    needs: [recomp, build-windows, build-linux-x64, build-linux-arm64, build-linux-flatpak, build-3ds]
     if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     steps:
