@@ -39,11 +39,6 @@ const MenuOption kOptions[] = {
     // The sky that follows the camera: the 3D cylinder (patches/background.c)
     // or the game's flat scroll, which costs the game's CPU far less.
     { "sky_3d", "Sky", 0, 1, &g_goemon_sky_3d, kSkyNames, nullptr, PageGame, 1, nullptr },
-    // Physical voices for the synthesizer, 8 or 16 (the game's own): a
-    // recompiler hook (mnsg.toml) applies it when the audio manager is
-    // created, so it takes effect at the next boot. Fewer voices halve the
-    // audio task's cost; the sequence player drops the quietest notes.
-    { "audio_voices", "Audio voices (boot)", 8, 16, &g_goemon_audio_voices, nullptr, nullptr, PageGame, 8, nullptr },
 };
 
 // Defaults for the library's rows, the owner's tuning on the console
@@ -54,7 +49,7 @@ const MenuDefault kDefaults[] = {
     { "hud_depth", 50 },                // the screen plane
     { "auto_convergence", 1 },
     { "comfort_target", 0 },
-    { "stereo_ghost_contrast", 90 },    // percent
+    { "stereo_ghost_contrast", 100 },   // percent: 100 with the 0% floor is ghost reduction off
     { "stereo_ghost_black_floor", 0 },  // percent
     { "stick_deadzone", 15 },           // percent
     { "cstick_deadzone", 20 },          // percent
@@ -244,6 +239,11 @@ int main(int argc, char** argv) {
     // begin waits for all of it: an eye pair of GPU time a list on the
     // game's path). settings.ini's gpu_double_eyes switches it.
     desc.render.double_eyes = true;
+    // The game's scheduler sends a graphics task's done message at the RDP's
+    // completion: it hears that once the renderer has read the list, so the
+    // renderer's interpretation and its waits for the screen (core 2) stay
+    // off the game's frame time (nmr patch 0028).
+    desc.render.early_drawn = true;
     // The audio task is libaudio's ABI 1 aspMain (rsp/aspMain.cpp), not the
     // naudio family: rt64-3ds interprets it on the CPU (aspmain_hle.cpp,
     // bit-exact with the recompiled microcode, which AUDIO_RSP.TXT selects).
@@ -260,6 +260,10 @@ int main(int argc, char** argv) {
     // music ran at half speed. Its samples reach the host through
     // osAiSetNextBuffer alone, so the tasks can complete asynchronously.
     desc.audio_async = true;
+    // The game drives libaudio's synthesizer directly (its own sequencer, no
+    // libaudio sequence player): mnsg.toml hooks alSyn* and alAudioFrame so
+    // the Audio engine row can play its voices on the DSP instead.
+    desc.synth = recomp3ds::SynthFlavor::Libaudio;
     desc.button_map = kButtons;
     desc.button_map_count = sizeof(kButtons) / sizeof(kButtons[0]);
     desc.menu_options = kOptions;
@@ -277,7 +281,6 @@ int main(int argc, char** argv) {
         bool new3ds = false;
         APT_CheckNew3DS(&new3ds);
         g_goemon_sky_3d = new3ds ? 1 : 0;
-        g_goemon_audio_voices = new3ds ? 16 : 8;
     }
 
     return recomp3ds::run(desc);

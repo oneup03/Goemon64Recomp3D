@@ -10,6 +10,5 @@
 extern int g_goemon_bgm_volume;             // 0..100 percent
 extern int g_goemon_se_volume;              // 0..100 percent
 extern int g_goemon_sky_3d;                 // 1: the 3D sky cylinder, 0: the game's flat scroll
-extern int g_goemon_audio_voices;           // physical voices the synthesizer gets (16: the game's own), applied at boot
 
 #endif

@@ -146,7 +146,7 @@ RECOMP_PATCH void func_8003AFB0_3BBB0() // player_set_volume
     s32 var_v0;
     u16 *var_v1;
     u32 temp_t4;
-    var_v1 = &D_801C09E8_1C15E8;
+    var_v1 = D_801C09E8_1C15E8;
 
     D_801C1728_1C2328->flags &= ~VOLUME_IS_CHANGING;
 

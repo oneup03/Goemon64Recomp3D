@@ -40,8 +40,6 @@ void return_axes(uint8_t* rdram, recomp_context* ctx, int invert_mode) {
 int g_goemon_bgm_volume = 100;
 int g_goemon_se_volume = 100;
 int g_goemon_sky_3d = 1;
-// Read by the recompiler hook in mnsg.toml at the audio manager's creation.
-int g_goemon_audio_voices = 16;
 
 // The host functions below that only the Majora's Mask template used
 // (targeting, autosave, the analog camera, the camera inversions): no Goemon

@@ -24,17 +24,78 @@ func = "func_80038210_38E10"
 vram = 0x80038290
 value = 0x00E3082A # sltu $at, $a3, $v1 -> slt $at, $a3, $v1
 
-# 3DS: the Game page's "Audio voices" row (platform/3ds/main_3ds.cpp): fewer
-# physical voices than the game's 16 cut the audio task's cost, which at the
-# Old 3DS clock is 10-17 ms a task and too much for the SDK audio manager's
-# one-task-per-retrace pipeline. The hook runs at the entry of the audio
-# manager's creation (libaudio's amCreateAudioMgr), where a0 is the
-# ALSynConfig and +4 its maxPVoices (alSynNew reads it there). The desktop
-# build compiles it out.
+# 3DS: the Audio engine row's DSP synthesizer (rt64-3ds dsp_synth.h). Each
+# of libaudio's synthesizer entry points tells rt64-3ds what the game asked
+# for (from the arguments at the function's entry), and the function then
+# runs as before, so the game's own bookkeeping is untouched. The desktop
+# build compiles the calls out.
 [[patches.hook]]
-func = "func_80037DC0_389C0"
+func = "alSynStartVoice"
 text = """
 #ifdef __3DS__
-    { extern int g_goemon_audio_voices; if (g_goemon_audio_voices > 0 && g_goemon_audio_voices < MEM_W(0X4, ctx->r4)) MEM_W(0X4, ctx->r4) = g_goemon_audio_voices; }
+    { extern void recomp3ds_synth_hook(uint8_t*, void*, int); recomp3ds_synth_hook(rdram, ctx, 0); }
+#endif
+"""
+[[patches.hook]]
+func = "alSynStartVoiceParams"
+text = """
+#ifdef __3DS__
+    { extern void recomp3ds_synth_hook(uint8_t*, void*, int); recomp3ds_synth_hook(rdram, ctx, 1); }
+#endif
+"""
+[[patches.hook]]
+func = "alSynStopVoice"
+text = """
+#ifdef __3DS__
+    { extern void recomp3ds_synth_hook(uint8_t*, void*, int); recomp3ds_synth_hook(rdram, ctx, 2); }
+#endif
+"""
+[[patches.hook]]
+func = "alSynSetVol"
+text = """
+#ifdef __3DS__
+    { extern void recomp3ds_synth_hook(uint8_t*, void*, int); recomp3ds_synth_hook(rdram, ctx, 3); }
+#endif
+"""
+[[patches.hook]]
+func = "alSynSetPitch"
+text = """
+#ifdef __3DS__
+    { extern void recomp3ds_synth_hook(uint8_t*, void*, int); recomp3ds_synth_hook(rdram, ctx, 4); }
+#endif
+"""
+[[patches.hook]]
+func = "alSynSetPan"
+text = """
+#ifdef __3DS__
+    { extern void recomp3ds_synth_hook(uint8_t*, void*, int); recomp3ds_synth_hook(rdram, ctx, 5); }
+#endif
+"""
+[[patches.hook]]
+func = "alSynSetFXMix"
+text = """
+#ifdef __3DS__
+    { extern void recomp3ds_synth_hook(uint8_t*, void*, int); recomp3ds_synth_hook(rdram, ctx, 6); }
+#endif
+"""
+[[patches.hook]]
+func = "alAudioFrame"
+text = """
+#ifdef __3DS__
+    { extern void recomp3ds_synth_hook(uint8_t*, void*, int); recomp3ds_synth_hook(rdram, ctx, 7); }
+#endif
+"""
+# 3DS: the players' handlers have run (their alSyn* calls are what the DSP
+# plays) and the command list is about to be built: with the voices on the
+# DSP, or the sound off, nothing runs the list, so rt64-3ds takes the frame's
+# updates itself, s3 (the samples left to build: s1 holds the synthesizer)
+# goes to 0 and s4 (the list's end) past the one command it writes.
+[[patches.hook]]
+func = "alAudioFrame"
+before_vram = 0x80047B40
+text = """
+#ifdef __3DS__
+    { extern int recomp3ds_synth_skip_build(uint8_t*, uint32_t, int32_t, uint32_t);
+      if (recomp3ds_synth_skip_build(rdram, (uint32_t)ctx->r17, (int32_t)ctx->r19, (uint32_t)ctx->r20)) { ctx->r19 = 0; ctx->r20 += 8; } }
 #endif
 """
