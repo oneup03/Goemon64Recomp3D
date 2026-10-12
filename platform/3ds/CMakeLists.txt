@@ -90,12 +90,16 @@ if(GOEMON_NULL_RENDERER)
     target_compile_definitions(Goemon64Recompiled3DS PRIVATE GOEMON_NULL_RENDERER)
 endif()
 
-set(GOEMON_TITLE "Goemon 64: Recompiled")
-set(GOEMON_DESCRIPTION "Mystical Ninja Starring Goemon for New 3DS")
-add_3dsx(Goemon64Recompiled3DS TITLE "${GOEMON_TITLE}" DESCRIPTION "${GOEMON_DESCRIPTION}"
+set(GOEMON_TITLE "Goemon 64: Recompiled 3D")
+# The Homebrew Launcher lists the .3dsx under a shorter title.
+set(GOEMON_3DSX_TITLE "Goemon 64: Recompiled")
+set(GOEMON_DESCRIPTION "Goemon 64: Recompiled 3D")
+add_3dsx(Goemon64Recompiled3DS TITLE "${GOEMON_3DSX_TITLE}" DESCRIPTION "${GOEMON_DESCRIPTION}"
          ICON "${CMAKE_CURRENT_LIST_DIR}/icon.png")
 include("${RT64_3DS_DIR}/cmake/Cia.cmake")
-# The banner: placeholders, the desktop icon on black and a second of silence.
+# The banner: Goemon's golden kiseru and "Ganbare! Sou ganbare!" from the
+# opening song, fitted to 3 s, made by the tools in a separate repository
+# (3ds-banner-tools, examples/goemon); only their output is here.
 add_cia(Goemon64Recompiled3DS RSF "${RT64_3DS_DIR}/cia/template.rsf" TITLE "${GOEMON_TITLE}" PRODUCT "GOEMON-3DS" UNIQUEID 0xF564E
         ICON "${CMAKE_CURRENT_LIST_DIR}/icon.png" DESCRIPTION "${GOEMON_DESCRIPTION}"
-        BANNER_PNG "${CMAKE_CURRENT_LIST_DIR}/cia/banner.png" BANNER_WAV "${CMAKE_CURRENT_LIST_DIR}/cia/banner.wav")
+        BANNER_CGFX "${CMAKE_CURRENT_LIST_DIR}/cia/banner.cgfx" BANNER_WAV "${CMAKE_CURRENT_LIST_DIR}/cia/banner.wav")

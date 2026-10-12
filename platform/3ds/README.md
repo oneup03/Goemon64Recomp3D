@@ -91,5 +91,6 @@ shares; it regenerates its own when it is next built. The `build-3ds` job in
 `tools/azahar-run.sh --script`): `boot.txt` (the first start, from the ROM
 conversion; null renderer), `title.txt` and `newgame.txt`.
 
-The CIA's banner (`cia/banner.png`, the desktop icon on black, and
-`cia/banner.wav`, a second of silence) is a placeholder.
+The CIA's banner is a 3D model of Goemon's golden kiseru
+(`cia/banner.cgfx`) with "Ganbare! Sou ganbare!" from the opening song
+(`cia/banner.wav`). Both come from 3ds-banner-tools' `examples/goemon`.
