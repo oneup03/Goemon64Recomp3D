@@ -78,3 +78,13 @@ azahar-out/
 /debug*/
 /log.txt
 /compile_commands.json
+# ... and the same captures, screenshots and recordings anywhere else in the tree
+screenshots/
+*.bmp
+*.ppm
+*.raw
+gfx_task*.bin
+audio_task_*.bin
+audio.wav
+*.n64
+*.v64
