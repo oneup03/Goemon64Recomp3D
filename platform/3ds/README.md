@@ -8,16 +8,15 @@ platform layer are [rt64-3ds](https://github.com/oneup03/rt64-3ds)
 
 ## Installing
 
-- **CIA** ([Goemon64Recompiled3D-3ds.cia](https://github.com/oneup03/Goemon64Recomp3D/releases/download/rolling/Goemon64Recompiled3D-3ds.cia)):
-  install it with FBI or another CIA installer, or scan the QR code below
-  with FBI (Remote Install > Scan QR Code). It appears on the HOME Menu as
-  "Goemon 64: Recompiled 3D". On an Old 3DS or 2DS, use the CIA (see
-  Performance).
-- **.3dsx** ([Goemon64Recompiled3D-3ds.zip](https://github.com/oneup03/Goemon64Recomp3D/releases/download/rolling/Goemon64Recompiled3D-3ds.zip)):
-  extract it to the root of the SD card and start
-  `3ds/Goemon64/Goemon64.3dsx` from the Homebrew Launcher.
+Download the latest build from the [releases page](https://github.com/oneup03/Goemon64Recomp3D/releases/tag/rolling):
 
-Both links are the latest build ([all downloads](https://github.com/oneup03/Goemon64Recomp3D/releases/tag/rolling)).
+- **CIA** (`Goemon64Recompiled3D-3ds-<commit>.cia`): install it with FBI or
+  another CIA installer, or scan the QR code below with FBI
+  (Remote Install > Scan QR Code). It appears on the HOME Menu as "Goemon
+  64: Recompiled 3D". On an Old 3DS or 2DS, use the CIA (see Performance).
+- **.3dsx** (`Goemon64Recompiled3D-3ds-<commit>.zip`): extract it to the root
+  of the SD card and start `3ds/Goemon64/Goemon64.3dsx` from the Homebrew
+  Launcher.
 
 ![QR code for FBI: the latest CIA](https://github.com/oneup03/Goemon64Recomp3D/releases/download/rolling/Goemon64Recompiled3D-3ds-QR.png)
 
