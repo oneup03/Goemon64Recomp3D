@@ -20,8 +20,11 @@ DECLARE_FUNC(s32, recomp_get_sky_3d);
 // the user's scale when this is set. Argument: 0 = normal, non-zero = low.
 DECLARE_FUNC(void, recomp_stereo_set_low_convergence_scene, s32 active);
 
+#ifdef MIPS
 // anime.c: widens a scissor command's edges that lie within 16 pixels of the
-// screen's (the N64's overscan) to the screen's.
+// screen's (the N64's overscan) to the screen's. The patches' own function:
+// the host code that includes this header has no Gfx.
 void widen_overscan_scissor(Gfx *g);
+#endif
 
 #endif

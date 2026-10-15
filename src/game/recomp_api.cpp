@@ -129,6 +129,13 @@ extern "C" void recomp_get_resolution_scale(uint8_t* rdram, recomp_context* ctx)
     _return(ctx, ultramodern::get_resolution_scale());
 }
 
+// The sky that follows the camera, as the 3D cylinder (patches/background.c):
+// always on the desktop. The 3DS build has its own (platform/3ds), where an
+// Old 3DS starts on the game's flat scroll.
+extern "C" void recomp_get_sky_3d(uint8_t* rdram, recomp_context* ctx) {
+    _return(ctx, static_cast<s32>(1));
+}
+
 extern "C" void recomp_get_inverted_axes(uint8_t* rdram, recomp_context* ctx) {
     s32* x_out = _arg<0, s32*>(rdram, ctx);
     s32* y_out = _arg<1, s32*>(rdram, ctx);
