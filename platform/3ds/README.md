@@ -27,6 +27,17 @@ For sound, the console's DSP firmware must be on the SD card at
 Luma3DS: open the Rosalina menu (L + D-pad down + SELECT), then
 Miscellaneous options > Dump DSP firmware. Without it the game runs silent.
 
+On the SD card, once installed:
+
+```
+sdmc:/
+  3ds/
+    dspfirm.cdc          the DSP firmware, for sound
+    Goemon64/
+      Goemon64.3dsx      the program (not needed with the CIA installed)
+      mnsg.us.z64        your ROM
+```
+
 ## Controls
 
 | 3DS | N64 |
