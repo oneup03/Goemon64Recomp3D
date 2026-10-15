@@ -126,6 +126,18 @@ int main(int argc, char** argv) {
     desc.register_overlays = goemon64::register_overlays;
     desc.register_patches = goemon64::register_patches;
     desc.get_game_thread_name = get_game_thread_name;
+    // The ROM in memory on an Old 3DS too. rom_new3ds and rom_old3ds stay at
+    // RomPlace::Auto on purpose (not Memory): the ROM is held when the heap
+    // has ROM + RDRAM + this room, else streamed from the SD card (an Old 3DS
+    // reads 128 KB in about 100 ms, and the game rereads its files as it
+    // plays), so a smaller heap (a .3dsx under the Homebrew Launcher) streams
+    // instead of failing allocations. The room is what the rest of the port
+    // takes: the owner's console at the Old clock peaked at 36-37 MB of arena
+    // with the ROM held and a 16 MB RDRAM, so about 5 MB beside ROM and
+    // RDRAM; 8 keeps a 3 MB margin. With the 12 MB RDRAM (CMakeLists.txt)
+    // the test asks 16 + 12 + 8 = 36 MB of an Old 3DS CIA's about 37 MB heap
+    // (a New 3DS has 86), and the ROM line of the log prints the figures.
+    desc.rom_room_mb = 8;
     // Goemon saves to the Controller Pak and only starts a game when a pak is
     // reported at boot; the desktop reports a Rumble Pak (src/game/input.cpp).
     desc.controller_pak = ultramodern::input::Pak::RumblePak;
@@ -234,8 +246,7 @@ int main(int argc, char** argv) {
     // interp."): 16-bit depth (from a gameplay capture, D16 resolves 0.7
     // world units at 200 units and 4.6 at 500, finer than the N64's own
     // 14-bit compressed z there: 1.3 and 8.4) and I/IA textures as LA8 (the
-    // same texels in half the bytes). settings.ini's gpu_depth16 /
-    // gpu_textures16 / gpu_fill_clear / gpu_color16 switch them for A/B tests.
+    // same texels in half the bytes).
     desc.render.eye_depth16 = true;
     desc.render.intensity_textures16 = true;
     // Every frame starts with a full-screen fill rectangle (and then the sky

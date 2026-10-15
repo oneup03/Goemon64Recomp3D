@@ -14,6 +14,14 @@ set(RT64_3DS_NMR_DIR "${GOEMON_ROOT}/lib/N64ModernRuntime")
 # No mods on the 3DS (RT64_3DS_STATIC_MODS stays off: RECOMP_NO_MODS). The
 # patches' RAM ends below rt64-3ds's default heap start (0x80A00000), which
 # rt64_3ds_check_patch_ram below checks, so RT64_3DS_HEAP_START is not set.
+# RDRAM is 12 MB instead of rt64-3ds's 16: the game's 8 MB, the patches'
+# RAM (0x80801000 to about 0x808B4000) and a 2 MB recomp heap from 0x80A00000
+# that nothing uses (the stats line's rheap peak is 0: no mods, no
+# recomp_alloc). The 4 MB saved let an Old 3DS hold the 16 MB ROM in memory
+# instead of streaming it from the SD card (main_3ds.cpp, rom_room_mb): its
+# CIA's heap is about 37 MB, and the port with the ROM held takes ROM 16 +
+# RDRAM + about 5 MB (the owner's console: 36-37 MB of arena with 16 MB).
+set(RT64_3DS_MEM_SIZE_MB 12)
 # 32-bit N64 registers (N64Recomp's recomp.h, RECOMP_GPR32): Goemon's
 # recompiled code has no 64-bit register instruction, so the registers can be
 # the ARM11's own width (15-25% fewer instructions in the recompiled code).
