@@ -474,12 +474,31 @@ jobs:
           path: dist
           merge-multiple: true
 
+      # A QR code of the 3DS CIA's download link, for FBI's "Remote Install >
+      # Scan QR Code": shown in the release notes and kept as an asset.
+      - name: Make the 3DS CIA's QR code
+        run: |
+          sudo apt-get install -y --no-install-recommends qrencode
+          cia="Goemon64Recompiled3D-3ds-${{ needs.recomp.outputs.sha_short }}.cia"
+          test -f "dist/$cia"
+          qrencode -o dist/Goemon64Recompiled3D-3ds-QR.png -s 8 -m 2 \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/rolling/$cia"
+
       - name: Publish rolling release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          {
+            echo "Built from $GITHUB_SHA (${{ needs.recomp.outputs.sha_short }})"
+            echo
+            echo "### Nintendo 3DS"
+            echo
+            echo "Scan with FBI (Remote Install > Scan QR Code) to install the CIA:"
+            echo
+            echo "![QR code for the 3DS CIA](https://github.com/$GITHUB_REPOSITORY/releases/download/rolling/Goemon64Recompiled3D-3ds-QR.png)"
+          } > notes.md
           gh release delete rolling --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
           gh release create rolling dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "Rolling Release" \
-            --notes "Built from $GITHUB_SHA (${{ needs.recomp.outputs.sha_short }})"
+            --notes-file notes.md
