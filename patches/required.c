@@ -1,6 +1,7 @@
 #include "patches.h"
 #include "misc_funcs.h"
 #include "overlay_files.h"
+#include "graphics.h"
 
 extern void overlay_apply_relocations(u32 file_id, u8 *load_addr);
 extern void *func_80014840_15440(void *, u32 file_id);
@@ -21,6 +22,29 @@ static void load_file_overlays(u32 file_id, u8 *buf_start)
             recomp_load_overlays(overlay_files[i].rom, (void *)buf_start, overlay_files[i].size);
             return;
         }
+    }
+}
+
+// @recomp File 14 holds 14 render-state display lists (ROM 0x65D290..0x65D890)
+// that the stage's objects call before drawing, and each sets the scissor to
+// (0,16)-(320,224), the N64's overscan border: they undid the camera's widened
+// scissor (anime.c, widen_camera_scissor) and the ground ended 16 rows above the
+// bottom of a wide screen, the sky showing below it. Its loaded copy gets the
+// same rule. No other file has such static scissors.
+#define FILE_STAGE_RENDER_STATES 14
+
+static void widen_file_scissors(u32 file_id, u8 *start, u8 *end)
+{
+    const f32 original_aspect_ratio = (f32)SCREEN_WIDTH / (f32)SCREEN_HEIGHT;
+    Gfx *g;
+
+    if ((file_id != FILE_STAGE_RENDER_STATES) || (((u32)start & 7) != 0) ||
+        (recomp_get_target_aspect_ratio(original_aspect_ratio) == original_aspect_ratio)) {
+        return;
+    }
+
+    for (g = (Gfx *)start; (u8 *)(g + 1) <= end; g++) {
+        widen_overscan_scissor(g);
     }
 }
 
@@ -68,6 +92,9 @@ RECOMP_PATCH u8 *func_80001C00_2800(u32 file_id, u8 *buf_start)
 
             // @recomp Apply relocations after loading the overlay.
             overlay_apply_relocations(file_id, buf_start);
+
+            // @recomp Widen the overscan scissors of its display lists.
+            widen_file_scissors(file_id, buf_start, buf_cur);
         }
 
         D_8015C5D4_15D1D4 = was_loading_file;

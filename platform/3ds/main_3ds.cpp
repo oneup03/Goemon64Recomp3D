@@ -160,6 +160,14 @@ int main(int argc, char** argv) {
     // the 400-pixel screen instead of leaving the 40-pixel margins empty.
     desc.render.fix_rect_lr = true;
     desc.render.merge_rect_slices = true;
+    // Files 22 and 23 set a (0,0)-(319,239) scissor, one pixel short of the
+    // frame: an edge within 5 pixels of the frame's counts as the frame's, so
+    // the scissor covers the width and the scene fills the wide screen.
+    desc.render.scissor_edge_slack = 5;
+    // The Impact battles' flashes (damage, transitions) are one untextured
+    // quad in front of the camera, sized to the 4:3 frame: stretched to cover
+    // the wide screen, on the screen plane.
+    desc.render.stretch_tint_quads = true;
     // Backdrops at infinity shift by the full separation per eye; scaled by
     // 1 + that shift about the frame's centre they still cover the screen
     // (the desktop's skybox-rect cover zoom) instead of baring a strip.

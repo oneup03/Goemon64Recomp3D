@@ -129,10 +129,13 @@ static u32 s_sky_last_step = 0;
 // ~1.7x wide, while two keep its texels near square. The cost is that the same
 // sky appears in opposite directions.
 //
-// The cylinder is fixed to the world the moment the sky first appears, from the
+// The cylinder is fixed to the world the moment the sky is recognised, from the
 // game's own framing then (its centre texel, vertical scroll and the camera's
 // pitch), so it starts exactly where the game draws it; after that every motion
-// is the camera's.
+// is the camera's, apart from the panorama's own drift (clouds), which it
+// follows. A sky is recognised at once when it scrolls as Oedo Town's does,
+// and otherwise once the camera has turned a little with the sky scrolling
+// along (sky_track).
 
 #define SKY_RADIUS              1000.0f
 #define SKY_WRAPS_PER_TURN      2
@@ -186,6 +189,90 @@ static f32 s_sky_yaw = 0.0f;
 static f32 s_sky_forward[3] = { 0.0f, 0.0f, 1.0f };
 static f32 s_sky_cot = 1.0f;
 
+// A sky that follows the camera is scrolled as start_x = offset - heading *
+// width / 360deg, so start_x plus the heading in texels (its offset) holds
+// still while the camera turns. Each sky has its own: Oedo Town's is half the
+// width, the sunset field's is not, and drifting clouds move it slowly. The
+// tracked sky's offset last step, smoothed (the drift without the scroll's
+// quantisation), and when the cylinder was anchored, with the anchor's texel.
+static f32 s_sky_offset = 0.0f;
+static f32 s_sky_offset_smooth = 0.0f;
+static f32 s_sky_offset_anchor = 0.0f;
+static f32 s_sky_u_anchor = 0.0f;
+// A background being watched while the camera turns: its offset when the
+// watch began and last step, and the heading turned since.
+static BackgroundGraphicsNode *s_sky_candidate_node = NULL;
+static u8 *s_sky_candidate_texture = NULL;
+static u16 s_sky_candidate_flags = 0;
+static u32 s_sky_candidate_step = 0;
+static f32 s_sky_candidate_yaw = 0.0f;
+static f32 s_sky_candidate_turn = 0.0f;
+static f32 s_sky_candidate_start_x = 0.0f;
+static f32 s_sky_candidate_scroll = 0.0f;
+static u32 s_sky_candidate_calls = 0;
+// The watched scroll's moves each way, for the still camera's drift, which
+// must go one way (clouds) rather than back and forth (a heading's jitter).
+static f32 s_sky_candidate_forward = 0.0f;
+static f32 s_sky_candidate_back = 0.0f;
+// Recognised by the still camera's drift or by Oedo Town's rule; and a
+// background that was, then failed its rate check when the camera turned
+// (one that scrolls by itself, or a static one that matched the rule by
+// chance): not taken those ways again, or it would switch on and off.
+static int s_sky_by_still = 0;
+static int s_sky_by_fast = 0;
+static BackgroundGraphicsNode *s_sky_still_ban_node = NULL;
+static u8 *s_sky_still_ban_texture = NULL;
+static u16 s_sky_still_ban_flags = 0;
+// The tracked sky's scroll: texels per radian of heading. Oedo Town's is one
+// width per turn, the Impact battles' two. A sky recognised by Oedo Town's
+// rule at once has it confirmed over its first turn as a watched one has
+// (any sky's scroll sweeps through that rule's offset as the camera turns),
+// and its drift is followed only after.
+static f32 s_sky_rate = 0.0f;
+static int s_sky_rate_confirmed = 0;
+static f32 s_sky_check_yaw = 0.0f;
+static f32 s_sky_check_turn = 0.0f;
+static f32 s_sky_check_start_x = 0.0f;
+static f32 s_sky_check_scroll = 0.0f;
+static u32 s_sky_check_calls = 0;
+// The scroll's drift per call, measured over windows of SKY_STILL_CALLS calls
+// in which the camera held still, taken off the scroll when the rate is
+// checked over a turn.
+static f32 s_sky_drift_per_call = 0.0f;
+// The offset may move this much from one step to the next while the sky is
+// tracked (near +-180 degrees Oedo Town's was measured 1.8 off); past it for
+// up to 4 steps the sky is drawn flat and still tracked (a cut that comes
+// back), longer and it is lost.
+#define SKY_STEP_TOLERANCE      6.0f
+// A watched background is the sky once the camera has turned this far and its
+// scroll moved by a whole number of widths per turn (1 or 2), to within
+// SKY_LEARN_SLIP of one width per turn. A backdrop that doesn't scroll with
+// the heading shows 0. The turn is measured with the heading the game
+// scrolled with (the frame before's): over a short turn the frame of lag is
+// a large share of it.
+#define SKY_LEARN_TURN          (8.0f * SKY_PI / 180.0f)
+#define SKY_LEARN_SLIP          0.25f
+#define SKY_LEARN_MAX_WRAPS     2
+#define SKY_DRIFT_SMOOTHING     0.1f
+// A camera that holds its heading (within SKY_STILL_TURN) for SKY_STILL_CALLS
+// calls while the scroll drifts on by at least SKY_STILL_MIN_DRIFT texels, no
+// faster than SKY_STILL_MAX_DRIFT a call: clouds drifting over a fixed view
+// (the sunset field, whose camera keeps one heading). Such a sky is drawn in
+// 3D with its rate taken as one width per turn and checked if the camera
+// turns, as by Oedo Town's rule; while the camera holds still, its drift is
+// followed.
+#define SKY_STILL_TURN          (0.5f * SKY_PI / 180.0f)
+#define SKY_STILL_CALLS         15
+#define SKY_STILL_MIN_DRIFT     2.0f
+#define SKY_STILL_MAX_DRIFT     4.0f
+// Oedo Town's rule: the offset within this many texels of half the width (a
+// room's skies sit up to 4 off while the camera swings in), at once, so a
+// room's sky is drawn in 3D from its first scrolled frame; never on a frame
+// whose scroll is still 0, 0: a background's first frame, before the game
+// scrolls it, with the camera at its default heading, matches the rule
+// exactly and would anchor the cylinder far too low.
+#define SKY_FAST_TOLERANCE      4.0f
+
 // Patches have no libm. Newton from the usual bit-level estimate: four steps
 // reach full float precision, and this runs a handful of times a frame.
 static f32 sky_sqrt(f32 x) {
@@ -209,6 +296,26 @@ static f32 sky_floor(f32 v) {
     return (t > v) ? (t - 1.0f) : t;
 }
 
+// Where the CPU reads a background's image. A texture in the background's
+// overlay file is addressed through segment 8 (texture_data 0x08000000, set
+// in func_80021740_22340), which only the RSP resolves: the file's address
+// comes from the same table the gSPSegment there takes it from. Anything else
+// that is not a KSEG0 address is not read (NULL).
+static const u8 *sky_cpu_address(BackgroundGraphicsNode *node, const u8 *p) {
+    u32 a = (u32)p;
+    if ((a >> 24) == 0x08) {
+        const u32 base = (u32)func_800141C4_14DC4(node->overlay_file_id);
+        if ((base == 0) || (base == 0xFFFFFFFF)) {
+            return NULL;
+        }
+        return (const u8 *)(0x80000000 | ((base + (a & 0x00FFFFFF)) & 0x00FFFFFF));
+    }
+    if ((a >> 28) != 0x8) {
+        return NULL;
+    }
+    return p;
+}
+
 // The open sky's colour: the commonest texel of the panorama's top row (the
 // sun and the clouds that reach it are the minority there), decoded through
 // the palette for CI textures. 0 for a format it does not read.
@@ -219,15 +326,17 @@ static int sky_measure_zenith(BackgroundGraphicsNode *node, u8 *rgb) {
     const int is_8b = (node->flags & (1 << 3)) != 0;
     const int is_ci = (node->flags & (1 << 0)) != 0;
     const int is_ia = !is_ci && ((node->flags & (1 << 1)) != 0);
+    const u8 *texture = sky_cpu_address(node, node->texture_data);
+    const u8 *palette = is_ci ? sky_cpu_address(node, node->palette_data) : NULL;
     int n = 0, i, best = -1;
     s32 x;
     u16 v;
 
-    if ((node->texture_data == NULL) || (width <= 0) || (is_ci && (!is_8b || (node->palette_data == NULL)))) {
+    if ((texture == NULL) || (width <= 0) || (is_ci && (!is_8b || (palette == NULL)))) {
         return 0;
     }
     for (x = 0; x < width; x++) {
-        v = is_8b ? node->texture_data[x] : (u16)((node->texture_data[2 * x] << 8) | node->texture_data[2 * x + 1]);
+        v = is_8b ? texture[x] : (u16)((texture[2 * x] << 8) | texture[2 * x + 1]);
         for (i = 0; (i < n) && (values[i] != v); i++) {
         }
         if (i == n) {
@@ -255,7 +364,7 @@ static int sky_measure_zenith(BackgroundGraphicsNode *node, u8 *rgb) {
         return 1;
     }
     if (is_ci) {
-        v = (u16)((node->palette_data[2 * v] << 8) | node->palette_data[2 * v + 1]);
+        v = (u16)((palette[2 * v] << 8) | palette[2 * v + 1]);
     }
     else if (is_8b) {
         return 0;
@@ -267,12 +376,43 @@ static int sky_measure_zenith(BackgroundGraphicsNode *node, u8 *rgb) {
     return 1;
 }
 
+// The scroll's whole widths per turn from the scroll and the heading turned
+// over a watch (0..SKY_LEARN_MAX_WRAPS; 0 for a scroll that doesn't follow the
+// heading), -1 for none of them; *wraps gets the measure.
+static s32 sky_whole_wraps(f32 scroll, f32 turn, f32 width_per_radian, f32 *wraps) {
+    const f32 w = (-scroll / turn) / width_per_radian;
+    const s32 whole = (s32)(w + ((w < 0.0f) ? -0.5f : 0.5f));
+    *wraps = w;
+    if ((whole < 0) || (whole > SKY_LEARN_MAX_WRAPS) || (w - (f32)whole > SKY_LEARN_SLIP) || ((f32)whole - w > SKY_LEARN_SLIP)) {
+        return -1;
+    }
+    return whole;
+}
+
+static void sky_watch(BackgroundGraphicsNode *node, f32 yaw) {
+    s_sky_candidate_node = node;
+    s_sky_candidate_texture = node->texture_data;
+    s_sky_candidate_flags = node->flags;
+    s_sky_candidate_step = g_game_step;
+    s_sky_candidate_yaw = yaw;
+    s_sky_candidate_turn = 0.0f;
+    s_sky_candidate_start_x = node->start_x;
+    s_sky_candidate_scroll = 0.0f;
+    s_sky_candidate_calls = 0;
+    s_sky_candidate_forward = 0.0f;
+    s_sky_candidate_back = 0.0f;
+}
+
 // Decides whether this background is the yaw-following sky and, if so,
 // anchors (first time) or updates the cylinder. Returns 1 to draw it in 3D.
 static int sky_track(BackgroundGraphicsNode *node) {
     const f32 texture_width = (f32)node->texture_width;
-    f32 dx, dy, dz, horizontal, yaw, scroll_yaw, scroll_tan_pitch, predicted, residual, half_fovy, tolerance;
-    int continuing;
+    // One width per turn, Oedo Town's scroll.
+    const f32 width_per_radian = texture_width / (2.0f * SKY_PI);
+    f32 dx, dy, dz, horizontal, yaw, scroll_yaw, scroll_tan_pitch, half_fovy, rate, reference, offset, change;
+    f32 prev_yaw, prev_tan_pitch, learn_yaw, turn, wraps;
+    s32 whole;
+    int tracking, watching, prev_ok, anchor, still = 0, fast = 0, fast_match, banned;
 
     // The panorama path (bit 15) uses start_x with different units, and the
     // cylinder needs whole columns, so the width must divide into them.
@@ -294,27 +434,32 @@ static int sky_track(BackgroundGraphicsNode *node) {
         return 0;
     }
 
-    continuing = (node == s_sky_node) && (node->texture_data == s_sky_texture) && (node->flags == s_sky_flags) &&
+    tracking = (node == s_sky_node) && (node->texture_data == s_sky_texture) && (node->flags == s_sky_flags) &&
         ((g_game_step - s_sky_last_step) <= 4);
+    watching = !tracking && (node == s_sky_candidate_node) && (node->texture_data == s_sky_candidate_texture) &&
+        (node->flags == s_sky_candidate_flags) && ((g_game_step - s_sky_candidate_step) <= 4);
+    // The scroll's rate and the offset expected: the tracked sky's, or for a
+    // new background Oedo Town's (half the width), recognised at once.
+    rate = tracking ? s_sky_rate : width_per_radian;
+    reference = tracking ? s_sky_offset : texture_width * 0.5f;
 
-    // The game scrolls this sky as start_x = width / 2 - yaw * width / 360deg.
-    // Its value normally sits within half a quantisation step (0.33 texels) of
-    // that, so recognising the sky needs it within 1 texel; once recognised it
-    // only has to stay within 6, since near +-180 degrees it was measured
-    // drifting up to 1.8 off, and dropping out there would flip the sky between
-    // 3D and flat.
-    yaw = sky_atan2(dx, dz);
-    predicted = sky_wrap(texture_width * 0.5f - yaw * texture_width / (2.0f * SKY_PI), texture_width);
-    residual = sky_wrap_signed(node->start_x - predicted, texture_width);
     // The heading the game scrolled with: this frame's, or (usually, while the
-    // camera turns) the frame before's, whichever start_x matches better.
+    // camera turns) the frame before's, whichever puts the offset nearer.
+    yaw = sky_atan2(dx, dz);
     scroll_yaw = yaw;
     scroll_tan_pitch = dy / horizontal;
-    if (s_sky_prev_view_valid && (g_sky_view.step != s_sky_prev_view_step) && ((g_sky_view.step - s_sky_prev_view_step) <= 4)) {
-        const f32 predicted_prev = sky_wrap(texture_width * 0.5f - s_sky_prev_view_yaw * texture_width / (2.0f * SKY_PI), texture_width);
-        const f32 residual_prev = sky_wrap_signed(node->start_x - predicted_prev, texture_width);
-        if (((residual_prev < 0.0f) ? -residual_prev : residual_prev) < ((residual < 0.0f) ? -residual : residual)) {
-            residual = residual_prev;
+    offset = sky_wrap(node->start_x + yaw * rate, texture_width);
+    change = sky_wrap_signed(offset - reference, texture_width);
+    prev_ok = s_sky_prev_view_valid && (g_sky_view.step != s_sky_prev_view_step) && ((g_sky_view.step - s_sky_prev_view_step) <= 4);
+    prev_yaw = s_sky_prev_view_yaw;
+    prev_tan_pitch = s_sky_prev_view_tan_pitch;
+    learn_yaw = prev_ok ? prev_yaw : yaw;
+    if (prev_ok) {
+        const f32 offset_prev = sky_wrap(node->start_x + s_sky_prev_view_yaw * rate, texture_width);
+        const f32 change_prev = sky_wrap_signed(offset_prev - reference, texture_width);
+        if (((change_prev < 0.0f) ? -change_prev : change_prev) < ((change < 0.0f) ? -change : change)) {
+            offset = offset_prev;
+            change = change_prev;
             scroll_yaw = s_sky_prev_view_yaw;
             scroll_tan_pitch = s_sky_prev_view_tan_pitch;
         }
@@ -323,9 +468,157 @@ static int sky_track(BackgroundGraphicsNode *node) {
     s_sky_prev_view_tan_pitch = dy / horizontal;
     s_sky_prev_view_step = g_sky_view.step;
     s_sky_prev_view_valid = 1;
-    tolerance = continuing ? 6.0f : 1.0f;
-    if ((residual > tolerance) || (residual < -tolerance)) {
+    banned = (node == s_sky_still_ban_node) && (node->texture_data == s_sky_still_ban_texture) && (node->flags == s_sky_still_ban_flags);
+    fast_match = !tracking && !banned && ((node->start_x != 0.0f) || (node->start_y != 0.0f)) &&
+        (change <= SKY_FAST_TOLERANCE) && (change >= -SKY_FAST_TOLERANCE);
+
+
+    anchor = !tracking;
+    if (tracking && !s_sky_rate_confirmed) {
+        // Recognised by Oedo Town's rule: the rate confirmed over the first
+        // turn, or the sky re-anchored with the one measured, or dropped.
+        s_sky_check_turn += sky_wrap_signed(learn_yaw - s_sky_check_yaw, 2.0f * SKY_PI);
+        s_sky_check_scroll += sky_wrap_signed(node->start_x - s_sky_check_start_x, texture_width);
+        s_sky_check_calls++;
+        s_sky_check_yaw = learn_yaw;
+        s_sky_check_start_x = node->start_x;
+        turn = (s_sky_check_turn < 0.0f) ? -s_sky_check_turn : s_sky_check_turn;
+        if ((turn < SKY_STILL_TURN) && (s_sky_check_calls >= SKY_STILL_CALLS)) {
+            // A window in which the camera held still: the check starts again
+            // from here, and for a sky taken by its drift, its scroll is the
+            // drift. (One taken by Oedo Town's rule has none: there such a
+            // window's scroll is a small turn's, which taken off a slow turn's
+            // many calls once read real one-width skies as 1.3 widths.)
+            if (s_sky_by_still) {
+                s_sky_drift_per_call = s_sky_check_scroll / (f32)s_sky_check_calls;
+            }
+            s_sky_check_turn = 0.0f;
+            s_sky_check_scroll = 0.0f;
+            s_sky_check_calls = 0;
+        }
+        else if (turn >= SKY_LEARN_TURN) {
+            // The nearest of the rates (the question is only which: the sky
+            // matched one already), none past them.
+            const f32 wraps = (-(s_sky_check_scroll - s_sky_drift_per_call * (f32)s_sky_check_calls) / s_sky_check_turn) / width_per_radian;
+            const s32 whole = ((wraps < -0.5f) || (wraps > (f32)SKY_LEARN_MAX_WRAPS + 0.5f)) ? -1 : (s32)(wraps + ((wraps < 0.0f) ? -0.5f : 0.5f));
+            // None of the rates; or none at all for a sky taken by Oedo Town's
+            // rule (a static backdrop that matched it). One taken by its drift
+            // over a still camera may not follow the heading at all (the
+            // sunset field's).
+            if ((whole < 0) || ((whole == 0) && !s_sky_by_still)) {
+                if (s_sky_by_still || s_sky_by_fast) {
+                    s_sky_still_ban_node = node;
+                    s_sky_still_ban_texture = node->texture_data;
+                    s_sky_still_ban_flags = node->flags;
+                }
+                s_sky_node = NULL;
+                sky_watch(node, learn_yaw);
+                return 0;
+            }
+            s_sky_rate_confirmed = 1;
+            if ((f32)whole * width_per_radian != s_sky_rate) {
+                rate = (f32)whole * width_per_radian;
+                scroll_yaw = prev_ok ? prev_yaw : yaw;
+                scroll_tan_pitch = prev_ok ? prev_tan_pitch : dy / horizontal;
+                offset = sky_wrap(node->start_x + scroll_yaw * rate, texture_width);
+                anchor = 1;
+            }
+            else {
+            }
+        }
+    }
+    if (tracking && !anchor) {
+        if ((change > SKY_STEP_TOLERANCE) || (change < -SKY_STEP_TOLERANCE)) {
+            // Flat this step; tracked for up to 4 steps (s_sky_last_step is
+            // left as it was), then watched afresh.
+            return 0;
+        }
+        // The cylinder follows the offset's drift (clouds): advanced by the
+        // drift measured every call, so it moves evenly, and pulled toward the
+        // offset seen when that can be trusted (the rate confirmed, a scroll
+        // that doesn't follow the heading, or a camera holding still).
+        s_sky_offset = offset;
+        s_sky_offset_smooth = sky_wrap(s_sky_offset_smooth + s_sky_drift_per_call, texture_width);
+        if (s_sky_rate_confirmed || (s_sky_rate == 0.0f) || ((s_sky_check_turn < SKY_STILL_TURN) && (s_sky_check_turn > -SKY_STILL_TURN))) {
+            s_sky_offset_smooth = sky_wrap(s_sky_offset_smooth + SKY_DRIFT_SMOOTHING * sky_wrap_signed(offset - s_sky_offset_smooth, texture_width), texture_width);
+        }
+        s_sky_u_at_zero_bearing = s_sky_u_anchor + sky_wrap_signed(s_sky_offset_smooth - s_sky_offset_anchor, texture_width);
+    }
+    else if (tracking) {
+        // Re-anchored with the measured rate (above).
+    }
+    else if (fast_match) {
+        // Oedo Town's rule, on a new or a watched background.
+        fast = 1;
+    }
+    else if (!watching) {
+        // A new background: watched.
+        sky_watch(node, learn_yaw);
         return 0;
+    }
+    else {
+        // The scroll against the heading turned since the watch began: a
+        // background scrolled by the heading moves by a whole number of widths
+        // per turn (with the game's frame of lag, which a long enough turn
+        // makes small); one that isn't moves by none.
+        const f32 moved = sky_wrap_signed(node->start_x - s_sky_candidate_start_x, texture_width);
+        s_sky_candidate_turn += sky_wrap_signed(learn_yaw - s_sky_candidate_yaw, 2.0f * SKY_PI);
+        s_sky_candidate_scroll += moved;
+        if (moved > 0.0f) {
+            s_sky_candidate_forward += moved;
+        }
+        else {
+            s_sky_candidate_back -= moved;
+        }
+        s_sky_candidate_yaw = learn_yaw;
+        s_sky_candidate_start_x = node->start_x;
+        s_sky_candidate_step = g_game_step;
+        s_sky_candidate_calls++;
+        turn = (s_sky_candidate_turn < 0.0f) ? -s_sky_candidate_turn : s_sky_candidate_turn;
+        if (turn < SKY_STILL_TURN) {
+            const f32 drift = (s_sky_candidate_scroll < 0.0f) ? -s_sky_candidate_scroll : s_sky_candidate_scroll;
+            const f32 against = (s_sky_candidate_forward < s_sky_candidate_back) ? s_sky_candidate_forward : s_sky_candidate_back;
+            if ((s_sky_candidate_calls < SKY_STILL_CALLS) || (drift < SKY_STILL_MIN_DRIFT) ||
+                (drift > SKY_STILL_MAX_DRIFT * (f32)s_sky_candidate_calls) || (against > 0.1f * drift) || banned) {
+                return 0;
+            }
+            still = 1;
+        }
+        else if (turn < SKY_LEARN_TURN) {
+            return 0;
+        }
+    }
+    if (fast) {
+        // Taken at one width per turn (the offset and heading as chosen
+        // above, nearest the rule), confirmed over the first turn.
+        rate = width_per_radian;
+    }
+    else if (still) {
+        // Clouds drifting over a fixed view (above), taken not to follow the
+        // heading until a turn shows otherwise: its offset is its scroll.
+        rate = 0.0f;
+        scroll_yaw = yaw;
+        scroll_tan_pitch = dy / horizontal;
+        offset = sky_wrap(node->start_x, texture_width);
+    }
+    else if (watching) {
+        whole = sky_whole_wraps(s_sky_candidate_scroll, s_sky_candidate_turn, width_per_radian, &wraps);
+        if (whole < 1) {
+            sky_watch(node, learn_yaw);
+            return 0;
+        }
+        rate = (f32)whole * width_per_radian;
+        // Anchored on the heading the game scrolls with: the frame before's
+        // (measured in Oedo Town), when there is one.
+        if (prev_ok) {
+            scroll_yaw = prev_yaw;
+            scroll_tan_pitch = prev_tan_pitch;
+        }
+        else {
+            scroll_yaw = yaw;
+            scroll_tan_pitch = dy / horizontal;
+        }
+        offset = sky_wrap(node->start_x + scroll_yaw * rate, texture_width);
     }
 
     half_fovy = (f32)g_sky_view.half_fovy * (SKY_PI / 32768.0f);
@@ -338,7 +631,7 @@ static int sky_track(BackgroundGraphicsNode *node) {
         s_sky_forward[2] = dz / length;
     }
 
-    if (!continuing) {
+    if (anchor) {
         // Anchor so the centre of the screen shows what the game shows there
         // now: the game's texel at the screen centre is start_x + 160 (its rect
         // starts at the left edge, one texel per unit), and the cylinder maps
@@ -346,8 +639,29 @@ static int sky_track(BackgroundGraphicsNode *node) {
         s_sky_node = node;
         s_sky_texture = node->texture_data;
         s_sky_flags = node->flags;
+        s_sky_candidate_node = NULL;
+        // Confirmed when learned or re-rated; by Oedo Town's rule or a still
+        // camera, checked from here (with the drift the still camera measured).
+        s_sky_rate_confirmed = !still && !fast;
+        if (!tracking) {
+            s_sky_by_still = still;
+            s_sky_by_fast = fast;
+        }
+        if (!tracking) {
+            s_sky_drift_per_call = still ? s_sky_candidate_scroll / (f32)s_sky_candidate_calls : 0.0f;
+        }
+        s_sky_check_yaw = learn_yaw;
+        s_sky_check_turn = 0.0f;
+        s_sky_check_start_x = node->start_x;
+        s_sky_check_scroll = 0.0f;
+        s_sky_check_calls = 0;
+        s_sky_rate = rate;
         s_sky_texels_per_radian = (f32)SKY_WRAPS_PER_TURN * texture_width / (2.0f * SKY_PI);
         s_sky_u_at_zero_bearing = node->start_x + 160.0f - node->upper_left_corner_x + scroll_yaw * s_sky_texels_per_radian;
+        s_sky_u_anchor = s_sky_u_at_zero_bearing;
+        s_sky_offset = offset;
+        s_sky_offset_smooth = offset;
+        s_sky_offset_anchor = offset;
         s_sky_anchor_sy = node->start_y;
         s_sky_anchor_tan_pitch = scroll_tan_pitch;
         s_sky_anchor_cot = s_sky_cot;

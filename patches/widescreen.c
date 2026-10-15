@@ -161,3 +161,131 @@ RECOMP_PATCH void func_80213AC8_672A78(RipplingKarakusaTask *task, Object *objec
         }
     }
 }
+// The pause menu's pictures: file 17 draws them in tiles with
+// func_802145F4_6735A4.
+typedef struct MenuPicture {
+    u16 width;
+    u16 height;
+    u32 unknown_4;
+    void *address;      // in its file (segmented)
+    u16 file_id;
+    u16 unknown_e;
+} MenuPicture;
+
+extern MenuPicture D_80167C78_168878[];
+extern void *func_80014840_15440(void *virtual_address, u32 file_id);
+
+// The map screen's backdrop is a 288x208 picture at (20, 16): the floor list's
+// hanging scroll and the map's scroll on the blue pattern, which stops at the
+// picture's edges and leaves black around it (the TV's overscan on the N64, and
+// both sides of a wide screen). The pattern repeats every 16 pixels and is
+// symmetric about the middle of each period, so the picture's first 8 columns,
+// mirrored, continue it with the picture's own shading from top to bottom.
+#define MAP_PICTURE_X           20
+#define MAP_PICTURE_Y           16
+#define MAP_PICTURE_WIDTH       288
+#define MAP_PICTURE_HEIGHT      208
+#define MAP_PATTERN_PERIOD      16
+#define MAP_PATTERN_COLUMNS     8
+// Rows 148..153 of those columns hold the end of the hanging scroll's rod: the
+// pattern there is taken a period higher.
+#define MAP_ROD_ROW             148
+#define MAP_ROD_ROWS            6
+
+// Loads rows source_row.. of the pattern columns, mirrored across the tile's
+// 8 texels (a 16-texel period).
+static Gfx *map_pattern_band(Gfx *gfx, u16 *pixels, s32 source_row, s32 rows) {
+    gDPPipeSync(gfx++);
+    gDPSetTextureImage(gfx++, G_IM_FMT_RGBA, G_IM_SIZ_16b, MAP_PICTURE_WIDTH, pixels + source_row * MAP_PICTURE_WIDTH);
+    gDPSetTile(gfx++, G_IM_FMT_RGBA, G_IM_SIZ_16b, 2, 0, G_TX_LOADTILE, 0, G_TX_CLAMP, 0, 0, G_TX_CLAMP, 0, 0);
+    gDPLoadSync(gfx++);
+    gDPLoadTile(gfx++, G_TX_LOADTILE, 0, 0, (MAP_PATTERN_COLUMNS - 1) << G_TEXTURE_IMAGE_FRAC, (rows - 1) << G_TEXTURE_IMAGE_FRAC);
+    gDPPipeSync(gfx++);
+    gDPSetTile(gfx++, G_IM_FMT_RGBA, G_IM_SIZ_16b, 2, 0, G_TX_RENDERTILE, 0, G_TX_CLAMP, 0, 0, G_TX_MIRROR | G_TX_WRAP, 3, 0);
+    gDPSetTileSize(gfx++, G_TX_RENDERTILE, 0, 0, (MAP_PATTERN_COLUMNS - 1) << G_TEXTURE_IMAGE_FRAC, (rows - 1) << G_TEXTURE_IMAGE_FRAC);
+    return gfx;
+}
+
+// A copy-mode rectangle of the loaded band over x0..x1 and y0..y1 (ends
+// exclusive) from band row t, in step with the picture's columns. An extended
+// rectangle, placed from the screen's centre (the N64's x = 160 on any width):
+// it takes coordinates past the N64's screen, and a row of rectangles with
+// plain origins that spans the width would be stretched over the wide screen
+// as one backdrop.
+static Gfx *map_pattern_rect(Gfx *gfx, s32 x0, s32 x1, s32 y0, s32 y1, s32 t) {
+    const s32 s = (((x0 - MAP_PICTURE_X) % MAP_PATTERN_PERIOD) + MAP_PATTERN_PERIOD) % MAP_PATTERN_PERIOD;
+    const s32 centre = SCREEN_WIDTH / 2;
+    gEXTextureRectangle(gfx++, G_EX_ORIGIN_CENTER, G_EX_ORIGIN_CENTER, (x0 - centre) << 2, y0 << 2, (x1 - 1 - centre) << 2, (y1 - 1) << 2,
+        G_TX_RENDERTILE, s << 5, t << 5, 4 << 10, 1 << 10);
+    return gfx;
+}
+
+static Gfx *map_picture_margins(Gfx *gfx, u16 *pixels) {
+    const f32 aspect = recomp_get_target_aspect_ratio(g_original_aspect_ratio);
+    const s32 top = MAP_PICTURE_Y;
+    const s32 bottom = MAP_PICTURE_Y + MAP_PICTURE_HEIGHT;
+    const s32 rod_end = MAP_ROD_ROW + MAP_ROD_ROWS;
+    s32 side = 0;
+    s32 left, right;
+
+    // Past the screen's edges on either side (the scissor ends the rectangles
+    // there), starting a whole number of periods from the picture.
+    if (aspect > g_original_aspect_ratio) {
+        side = (s32)((SCREEN_HEIGHT * aspect - SCREEN_WIDTH) * 0.5f);
+    }
+    left = MAP_PICTURE_X - MAP_PATTERN_PERIOD * ((side + MAP_PICTURE_X) / MAP_PATTERN_PERIOD + 2);
+    right = MAP_PICTURE_X + MAP_PICTURE_WIDTH + MAP_PATTERN_PERIOD * ((side + SCREEN_WIDTH - MAP_PICTURE_X - MAP_PICTURE_WIDTH) / MAP_PATTERN_PERIOD + 2);
+
+    gEXSetScissor(gfx++, G_SC_NON_INTERLACE, G_EX_ORIGIN_LEFT, G_EX_ORIGIN_RIGHT, 0, 0, 0, SCREEN_HEIGHT);
+
+    // Above the rod, and above the picture (whose screen rows 0..15 are its rows
+    // -16..-1: its first period again).
+    gfx = map_pattern_band(gfx, pixels, 0, MAP_ROD_ROW);
+    gfx = map_pattern_rect(gfx, left, MAP_PICTURE_X, top, top + MAP_ROD_ROW, 0);
+    gfx = map_pattern_rect(gfx, MAP_PICTURE_X + MAP_PICTURE_WIDTH, right, top, top + MAP_ROD_ROW, 0);
+    gfx = map_pattern_rect(gfx, left, MAP_PICTURE_X, 0, top, 0);
+    gfx = map_pattern_rect(gfx, MAP_PICTURE_X, right, 0, top, 0);
+
+    // Beside the rod.
+    gfx = map_pattern_band(gfx, pixels, MAP_ROD_ROW - MAP_PATTERN_PERIOD, MAP_ROD_ROWS);
+    gfx = map_pattern_rect(gfx, left, MAP_PICTURE_X, top + MAP_ROD_ROW, top + rod_end, 0);
+    gfx = map_pattern_rect(gfx, MAP_PICTURE_X + MAP_PICTURE_WIDTH, right, top + MAP_ROD_ROW, top + rod_end, 0);
+
+    // Below it, and below the picture (its last period again).
+    gfx = map_pattern_band(gfx, pixels, rod_end, MAP_PICTURE_HEIGHT - rod_end);
+    gfx = map_pattern_rect(gfx, left, MAP_PICTURE_X, top + rod_end, bottom, 0);
+    gfx = map_pattern_rect(gfx, MAP_PICTURE_X + MAP_PICTURE_WIDTH, right, top + rod_end, bottom, 0);
+    gfx = map_pattern_rect(gfx, left, MAP_PICTURE_X, bottom, SCREEN_HEIGHT, MAP_PICTURE_HEIGHT - MAP_PATTERN_PERIOD - rod_end);
+    gfx = map_pattern_rect(gfx, MAP_PICTURE_X, right, bottom, SCREEN_HEIGHT, MAP_PICTURE_HEIGHT - MAP_PATTERN_PERIOD - rod_end);
+
+    // The scissor the picture is drawn under.
+    gDPSetScissor(gfx++, G_SC_NON_INTERLACE, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    return gfx;
+}
+
+// @recomp Patched to draw the map screen's backdrop pattern past its picture's
+// edges (above) before the picture's first tile. One tile of a picture: width x
+// height texels from (s, t) drawn at (x, y) in copy mode.
+RECOMP_PATCH Gfx *func_802145F4_6735A4(Gfx *gfx, s32 x, s32 y, s32 width, s32 height, s32 picture_index, s32 s, s32 t)
+{
+    MenuPicture *picture = &D_80167C78_168878[picture_index];
+    u16 *pixels = (u16 *)func_80014840_15440(picture->address, picture->file_id);
+    const s32 line = ((width * 2) + 7) >> 3;
+
+    if ((s == 0) && (t == 0) && (x == MAP_PICTURE_X) && (y == MAP_PICTURE_Y) &&
+        (picture->width == MAP_PICTURE_WIDTH) && (picture->height == MAP_PICTURE_HEIGHT) && (pixels != NULL)) {
+        gfx = map_picture_margins(gfx, pixels);
+    }
+
+    gDPPipeSync(gfx++);
+    gDPSetTextureImage(gfx++, G_IM_FMT_RGBA, G_IM_SIZ_16b, picture->width, pixels + (picture->width * t) + s);
+    gDPSetTile(gfx++, G_IM_FMT_RGBA, G_IM_SIZ_16b, line, 0, G_TX_LOADTILE, 0, G_TX_CLAMP, 0, 0, G_TX_CLAMP, 0, 0);
+    gDPLoadSync(gfx++);
+    gDPLoadTile(gfx++, G_TX_LOADTILE, 0, 0, (width - 1) << G_TEXTURE_IMAGE_FRAC, (height - 1) << G_TEXTURE_IMAGE_FRAC);
+    gDPPipeSync(gfx++);
+    gDPSetTile(gfx++, G_IM_FMT_RGBA, G_IM_SIZ_16b, line, 0, G_TX_RENDERTILE, 0, G_TX_CLAMP, 0, 0, G_TX_CLAMP, 0, 0);
+    gDPSetTileSize(gfx++, G_TX_RENDERTILE, 0, 0, (width - 1) << G_TEXTURE_IMAGE_FRAC, (height - 1) << G_TEXTURE_IMAGE_FRAC);
+    gSPTextureRectangle(gfx++, x << 2, y << 2, (x + width - 1) << 2, (y + height - 1) << 2, G_TX_RENDERTILE, 0, 0, 4 << 10, 1 << 10);
+    gSPEndDisplayList(gfx);
+    return gfx;
+}

@@ -72,13 +72,48 @@ static u32 goemon_projection_id_for_camera(const Camera *cam) {
 }
 #endif
 
+// @recomp widen_camera_scissor's rule for a scissor command (coordinates in 10.2
+// fixed point): an edge within 16 pixels of the screen's goes to it.
+void widen_overscan_scissor(Gfx *g) {
+    u32 w0 = g->words.w0;
+    u32 w1 = g->words.w1;
+    u32 ulx, uly, lrx, lry;
+
+    if ((w0 >> 24) != G_SETSCISSOR) {
+        return;
+    }
+
+    ulx = (w0 >> 12) & 0xFFF;
+    uly = w0 & 0xFFF;
+    lrx = (w1 >> 12) & 0xFFF;
+    lry = w1 & 0xFFF;
+
+    if ((ulx > 0) && (ulx <= (16 << 2))) {
+        ulx = 0;
+    }
+
+    if ((uly > 0) && (uly <= (16 << 2))) {
+        uly = 0;
+    }
+
+    if ((lrx >= ((SCREEN_WIDTH - 16) << 2)) && (lrx < (SCREEN_WIDTH << 2))) {
+        lrx = SCREEN_WIDTH << 2;
+    }
+
+    if ((lry >= ((SCREEN_HEIGHT - 16) << 2)) && (lry < (SCREEN_HEIGHT << 2))) {
+        lry = SCREEN_HEIGHT << 2;
+    }
+
+    g->words.w0 = (w0 & 0xFF000000) | (ulx << 12) | uly;
+    g->words.w1 = (w1 & 0xFF000000) | (lrx << 12) | lry;
+}
+
 #ifdef GOEMON_3DS
 // @recomp The same overscan rule for scissors that reach the frame's display list
 // without a camera: the Impact battles' overlay builds two small display lists of
 // its own every frame, a scissor and a fill rectangle clamped to (10,14)-(310,224)
 // (the world under a cinematic letterbox: (10,54)-(310,184)), and object nodes
-// copy them into the frame's list after the camera's widened scissor. Scissor
-// coordinates are 10.2 fixed point.
+// copy them into the frame's list after the camera's widened scissor.
 static void widen_overscan_scissors(Gfx *start, Gfx *end) {
     Gfx *g;
 
@@ -88,37 +123,7 @@ static void widen_overscan_scissors(Gfx *start, Gfx *end) {
     }
 
     for (g = start; g < end; g++) {
-        u32 w0 = g->words.w0;
-        u32 w1 = g->words.w1;
-        u32 ulx, uly, lrx, lry;
-
-        if ((w0 >> 24) != G_SETSCISSOR) {
-            continue;
-        }
-
-        ulx = (w0 >> 12) & 0xFFF;
-        uly = w0 & 0xFFF;
-        lrx = (w1 >> 12) & 0xFFF;
-        lry = w1 & 0xFFF;
-
-        if ((ulx > 0) && (ulx <= (16 << 2))) {
-            ulx = 0;
-        }
-
-        if ((uly > 0) && (uly <= (16 << 2))) {
-            uly = 0;
-        }
-
-        if ((lrx >= ((SCREEN_WIDTH - 16) << 2)) && (lrx < (SCREEN_WIDTH << 2))) {
-            lrx = SCREEN_WIDTH << 2;
-        }
-
-        if ((lry >= ((SCREEN_HEIGHT - 16) << 2)) && (lry < (SCREEN_HEIGHT << 2))) {
-            lry = SCREEN_HEIGHT << 2;
-        }
-
-        g->words.w0 = (w0 & 0xFF000000) | (ulx << 12) | uly;
-        g->words.w1 = (w1 & 0xFF000000) | (lrx << 12) | lry;
+        widen_overscan_scissor(g);
     }
 }
 
