@@ -449,16 +449,16 @@ jobs:
           mkdir -p "$out"
           cp build-3ds/Goemon64Recompiled3DS.3dsx "$out/Goemon64.3dsx"
           cp platform/3ds/README.md "$out/"
-          (cd package && zip -q -r "../Goemon64Recompiled3D-3ds-${{ needs.recomp.outputs.sha_short }}.zip" 3ds)
-          cp build-3ds/Goemon64Recompiled3DS.cia "Goemon64Recompiled3D-3ds-${{ needs.recomp.outputs.sha_short }}.cia"
+          (cd package && zip -q -r "../Goemon64Recompiled3D-3ds.zip" 3ds)
+          cp build-3ds/Goemon64Recompiled3DS.cia "Goemon64Recompiled3D-3ds.cia"
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-3ds
           path: |
-            Goemon64Recompiled3D-3ds-${{ needs.recomp.outputs.sha_short }}.zip
-            Goemon64Recompiled3D-3ds-${{ needs.recomp.outputs.sha_short }}.cia
+            Goemon64Recompiled3D-3ds.zip
+            Goemon64Recompiled3D-3ds.cia
           if-no-files-found: error
 
   publish:
@@ -479,7 +479,7 @@ jobs:
       - name: Make the 3DS CIA's QR code
         run: |
           sudo apt-get install -y --no-install-recommends qrencode
-          cia="Goemon64Recompiled3D-3ds-${{ needs.recomp.outputs.sha_short }}.cia"
+          cia="Goemon64Recompiled3D-3ds.cia"
           test -f "dist/$cia"
           qrencode -o dist/Goemon64Recompiled3D-3ds-QR.png -s 8 -m 2 \
             "https://github.com/$GITHUB_REPOSITORY/releases/download/rolling/$cia"
