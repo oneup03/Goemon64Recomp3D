@@ -449,6 +449,8 @@ jobs:
           mkdir -p "$out"
           cp build-3ds/Goemon64Recompiled3DS.3dsx "$out/Goemon64.3dsx"
           cp platform/3ds/README.md "$out/"
+          # OpenDSP (embedded) is BSD 2-Clause: a binary release carries its licence.
+          cp lib/rt64-3ds/third_party/OpenDSP/LICENSE "$out/OpenDSP-LICENSE.txt"
           (cd package && zip -q -r "../Goemon64Recompiled3D-3ds-${{ needs.recomp.outputs.sha_short }}.zip" 3ds)
           cp build-3ds/Goemon64Recompiled3DS.cia "Goemon64Recompiled3D-3ds-${{ needs.recomp.outputs.sha_short }}.cia"
 
