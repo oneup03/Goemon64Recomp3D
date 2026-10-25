@@ -60,10 +60,12 @@ sdmc:/
 | Circle Pad | analog stick |
 | C-Stick | the camera: R + C buttons, repeated while held (or the plain C buttons: Controls settings) |
 
-The Controls page's X / Y buttons setting puts C-Right on X and C-Left on Y
-instead (C-Up and C-Down stay on the D-pad). The Game page's Performance
-monitor setting hides the bottom screen's frame rate and text; touch
-buttons stay.
+The Controls page maps each button (A, B, X, Y, L, R, ZL, ZR and the
+D-pad's directions) to any N64 button, adds up to two N64 buttons on the
+touch screen, can turn off C-Stick up and down, and resets it all with
+Reset controls. The Game page's Performance monitor setting hides the
+bottom screen's frame rate and text; touch buttons stay. The Game page
+also sets each screen's brightness.
 
 The game never reads the N64's L or D-pad. R with the C buttons moves the
 camera (C-Left/Right turn it, C-Up/Down zoom). The C-Stick does that by
