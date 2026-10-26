@@ -136,6 +136,12 @@ extern "C" void recomp_get_sky_3d(uint8_t* rdram, recomp_context* ctx) {
     _return(ctx, static_cast<s32>(1));
 }
 
+// A mod's ROM patch over a file the game has just loaded (patches/required.c):
+// the 3DS applies a translation's that way (platform/3ds/file_patches.cpp);
+// the desktop's runtime patches the ROM instead, so nothing to do here.
+extern "C" void recomp_patch_file(uint8_t* rdram, recomp_context* ctx) {
+}
+
 extern "C" void recomp_get_inverted_axes(uint8_t* rdram, recomp_context* ctx) {
     s32* x_out = _arg<0, s32*>(rdram, ctx);
     s32* y_out = _arg<1, s32*>(rdram, ctx);

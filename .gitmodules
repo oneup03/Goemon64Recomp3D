@@ -29,3 +29,7 @@
 [submodule "lib/rt64-3ds"]
 	path = lib/rt64-3ds
 	url = https://github.com/oneup03/rt64-3ds.git
+[submodule "platform/3ds/mods/mnsg-enable-boss-rush"]
+	path = platform/3ds/mods/mnsg-enable-boss-rush
+	url = https://github.com/8AE/mnsg-enable-boss-rush
+	update = none

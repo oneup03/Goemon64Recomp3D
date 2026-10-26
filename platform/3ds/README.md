@@ -111,9 +111,43 @@ or 30 fps for at most 30.
 **Old 3DS / 2DS:** runs at about 20-30 fps where the game asks 30, lower in
 the heaviest scenes. It starts with Frame rate at 30 fps, as it can't afford
 the frames in between, and the Sky at Flat. Install the CIA rather than
-running the .3dsx: an Old 3DS gives a game 64 MB, and the CIA leaves enough
-to hold the 16 MB ROM in memory, where the Homebrew Launcher may not; the
-game then reads the ROM from the SD card as it needs it, with slower loads.
+running the .3dsx: the CIA asks an Old 3DS for 80 MB, enough to hold the
+16 MB ROM in memory (the console restarts when the game closes). The .3dsx
+gets only the Homebrew Launcher's 64 MB, so it reads the ROM from the SD card
+as it needs it, with slower loads.
+
+## Mods
+
+Mods for Goemon 64: Recompiled are built in, on the settings' Mods page. Two
+of them don't work together: the Mod row picks one or Off, and the choice
+takes effect the next time the game starts.
+
+- **Redub** (klorfmorf and abyssonym; CC0): restores the Japanese voice
+  acting the international releases removed from the opening and ending
+  cutscenes and the D'Etoile knockout. Those scenes keep their English text.
+  <https://github.com/klorfmorf/MNSGRecompRedubMod>
+- **Deutsch** (Mekurukid; MIT, `Goemon64-DE-LICENSE.txt`): the German fan
+  translation, Deutsche Übersetzung v1.0.11 (release v0.8.5-beta). It is a
+  patch to the game's text, applied to each file as the game loads it.
+  <https://github.com/Mekurukid/Goemon64-DE>
+
+The others switch on and off on their own rows, at once:
+
+- **Enable Boss Rush** (Killzbro / 8AE; CC0): the Option menu always offers
+  Consecutive Fighting! Large Boss, the Impact boss rush, without the 45
+  Fortune Dolls. <https://github.com/8AE/mnsg-enable-boss-rush>
+- **Fast Travel** (Killklli; CC0): the dragon's flight between areas lasts
+  about 3 seconds instead of 25 (the mod's v1.0.0, which needs no button).
+  <https://github.com/Killklli/MNSGRecompModFastTravel>
+- **Custom Fish** (8AE; CC0): sets how many fish each stage of the fishing
+  quest needs (its options on the Mods page; the game's text still says
+  8, 5 and 3). <https://github.com/8AE/mnsg-custom-fish>
+- **Intro Lyrics** (ZettaHakai; CC0): the opening song's lyrics as romaji,
+  karaoke, the original or none. <https://github.com/ZettaHakai/MNSGIntroLyrics>
+- **Attack While Moving** (sirdankz): keep moving during ground pipe attacks.
+  <https://github.com/sirdankz/MNSG_AttackWhileMoving>
+
+The mods folder isn't used: other mods can't be added on the 3DS.
 
 ## AI use
 
@@ -131,8 +165,8 @@ the decompressed US ROM `mnsg.us.decompressed.z64` at the repository root
 (the recompiler's input; the game itself runs from the retail ROM).
 
 ```sh
-make -C platform/3ds nmr-patch host-tools   # once: runtime patch series, recompiler
-make -C platform/3ds codegen                # recompile the ROM and the patches
+make -C platform/3ds nmr-patch host-tools   # once: runtime patch series, recompiler, mod_bake
+make -C platform/3ds codegen                # fetch and bake the mods, recompile the ROM and the patches
 make -C platform/3ds cia                    # build-3ds/Goemon64Recompiled3DS.3dsx and .cia
 ```
 
@@ -140,7 +174,9 @@ make -C platform/3ds cia                    # build-3ds/Goemon64Recompiled3DS.3d
 `make -C platform/3ds` without a target builds only the .3dsx;
 `make configure CMAKE_ARGS=-DGOEMON_NULL_RENDERER=ON` and a build give one
 that draws nothing (bring-up). The header of `platform/3ds/Makefile` lists
-the other targets. `make codegen` rebuilds the patches with `GOEMON_3DS`
+the other targets. `codegen` downloads the built-in mods' releases
+(`fetch_mods.sh`, pinned by SHA-256) into `build-mods/` and bakes them into
+`RecompiledMods/` (rt64-3ds `tools/mod_bake`). `make codegen` rebuilds the patches with `GOEMON_3DS`
 into `patches/build/` and `RecompiledPatches/`, which the desktop build
 shares; it regenerates its own when it is next built. The `build-3ds` job in
 `.github/workflows/release.yml` runs the same steps in devkitPro's container.

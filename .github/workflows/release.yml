@@ -393,6 +393,9 @@ jobs:
           git config --global --add safe.directory '*'
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@users.noreply.github.com"
+          # The mods built from source (platform/3ds/mods.list): submodules
+          # with update = none, which the recursive checkout skips.
+          git submodule update --init --checkout platform/3ds/mods
 
       - name: ccache
         uses: hendrikmuhs/ccache-action@v1.2
@@ -424,11 +427,12 @@ jobs:
       # The 3DS build uses the runtime's own N64Recomp
       # (lib/N64ModernRuntime/N64Recomp) after rt64-3ds's patch series is
       # applied to the runtime.
-      - name: Build N64Recomp & RSPRecomp
+      - name: Build N64Recomp, RSPRecomp & mod_bake
         run: make -C platform/3ds nmr-patch host-tools
 
-      # The game and the audio microcode as for the desktop, then the patches
-      # built with GOEMON_3DS.
+      # The patches built with GOEMON_3DS, the built-in mods' pinned releases
+      # fetched and baked (fetch_mods.sh, rt64-3ds mod_bake), then the game
+      # and the audio microcode as for the desktop plus the mods' hooks.
       - name: Run N64Recomp & RSPRecomp
         run: make -C platform/3ds codegen PATCH_CC=clang-15 LLD=ld.lld-15
 
@@ -451,6 +455,8 @@ jobs:
           cp platform/3ds/README.md "$out/"
           # OpenDSP (embedded) is BSD 2-Clause: a binary release carries its licence.
           cp lib/rt64-3ds/third_party/OpenDSP/LICENSE "$out/OpenDSP-LICENSE.txt"
+          # So is the German translation built in (MIT); Redub is CC0.
+          cp platform/3ds/licenses/*.txt "$out/"
           (cd package && zip -q -r "../Goemon64Recompiled3D-3ds-${{ needs.recomp.outputs.sha_short }}.zip" 3ds)
           cp build-3ds/Goemon64Recompiled3DS.cia "Goemon64Recompiled3D-3ds-${{ needs.recomp.outputs.sha_short }}.cia"
 

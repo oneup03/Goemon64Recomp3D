@@ -90,6 +90,10 @@ RECOMP_PATCH u8 *func_80001C00_2800(u32 file_id, u8 *buf_start)
                 buf_cur = buf_start + file_size_aligned;
             }
 
+            // @recomp A mod's ROM patch (a translation) over the file, as the patched
+            // ROM would have it, before its relocations (3DS: platform/3ds/file_patches.cpp).
+            recomp_patch_file(file_id, buf_start, (u32)(buf_cur - buf_start));
+
             // @recomp Apply relocations after loading the overlay.
             overlay_apply_relocations(file_id, buf_start);
 

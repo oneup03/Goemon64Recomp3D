@@ -27,6 +27,7 @@ recomp_set_right_analog_suppressed = 0x8F000058;
 recomp_run_ui_callbacks = 0x8F00005C;
 recomp_decompress_file = 0x8F000060;
 recomp_get_sky_3d = 0x8F00006C;
+recomp_patch_file = 0x8F000070;
 
 /* The runtime's libultra functions, for patches that call them */
 osCreateMesgQueue_recomp = 0x8F000064;

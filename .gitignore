@@ -69,6 +69,10 @@ cmake-build-*
 # Nintendo 3DS build (platform/3ds)
 build-3ds/
 build-host/
+# ... its baked mods (fetch_mods.sh, mod_bake) and the configs they extend
+/RecompiledMods/
+/mnsg.3ds.toml
+/patches.3ds.toml
 azahar-out/
 *.3dsx
 *.cia

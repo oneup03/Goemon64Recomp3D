@@ -1,6 +1,7 @@
 // Goemon 64: Recompiled, Nintendo 3DS entry point.
 #include <cinttypes>
 #include <cstdio>
+#include <span>
 #include <string>
 
 #include <3ds.h>
@@ -96,16 +97,40 @@ const rt64_3ds::StereoRule goemon_stereo_rules[] = {
     { 0xFFFFFFFF, 0xFFFFFFFF, ProjKind::Perspective, StereoClass::World },
 };
 
+// The mods built into the executable (Makefile, fetch_mods.sh), which don't
+// work together: one row on the Mods page picks one or none. Redub restores
+// the Japanese cutscene voices (its scenes keep their English text); the
+// German translation's ROM patch is applied as the game loads each file
+// (file_patches.cpp). Ids as in their manifests.
+const char* const kModChoiceIds[] = { "redub_mod", "goemon64_de_v1011" };
+const char* const kModChoiceNames[] = { "Redub", "Deutsch" };
+
 }   // namespace
+
+// RecompiledMods/static_mods.cpp (rt64-3ds tools/mod_bake): the mods built into the executable.
+void recomp_register_static_mods();
+
+namespace goemon64 {
+bool use_rom_patch(const std::string& mod_id, std::span<const uint8_t> patch);   // file_patches.cpp
+}
 
 int main(int argc, char** argv) {
     (void)argc; (void)argv;
 
+    recomp_register_static_mods();
+
     recomp3ds::GameDesc desc{};
     desc.game_id = u8"mnsg.us";
     desc.sd_dir = "Goemon64";               // the ROM: sdmc:/3ds/Goemon64/mnsg.us.z64
-    // The desktop's version (src/main/main.cpp).
+    // The desktop's version (src/main/main.cpp): mods check it.
     recomp::Version::from_string("0.2.0-dev", desc.project_version);
+    // Every mod is built in: no mods folder for the player's .nrm files.
+    desc.mods_folder = false;
+    desc.rom_patch = goemon64::use_rom_patch;
+    desc.mod_choice_label = "Mod (at restart)";
+    desc.mod_choice_ids = kModChoiceIds;
+    desc.mod_choice_names = kModChoiceNames;
+    desc.mod_choice_count = sizeof(kModChoiceIds) / sizeof(kModChoiceIds[0]);
     desc.entry = recomp::GameEntry{
         // The retail ROM, as the desktop: the game decompresses its files itself
         // and patches/required.c registers their overlays by file id.
@@ -113,11 +138,11 @@ int main(int argc, char** argv) {
         .internal_name = "MYSTICAL NINJA",
         .display_name = "Mystical Ninja Starring Goemon",
         .game_id = u8"mnsg.us",
-        .mod_game_id = "",                  // no mods on the 3DS
+        .mod_game_id = "mnsg",              // mods baked into the executable (BAKE_MODS)
         .save_type = recomp::SaveType::AllowAll,
         .thumbnail_bytes = {},
         .is_enabled = false,
-        .decompression_routine = nullptr,  // only mod hooking needs it
+        .decompression_routine = nullptr,  // only the desktop's mod hooking needs it (baked mods dispatch)
         .has_compressed_code = true,
         .entrypoint_address = get_entrypoint_address(),
         .entrypoint = recomp_entrypoint,
@@ -134,9 +159,10 @@ int main(int argc, char** argv) {
     // instead of failing allocations. The room is what the rest of the port
     // takes: the owner's console at the Old clock peaked at 36-37 MB of arena
     // with the ROM held and a 16 MB RDRAM, so about 5 MB beside ROM and
-    // RDRAM; 8 keeps a 3 MB margin. With the 12 MB RDRAM (CMakeLists.txt)
-    // the test asks 16 + 12 + 8 = 36 MB of an Old 3DS CIA's about 37 MB heap
-    // (a New 3DS has 86), and the ROM line of the log prints the figures.
+    // RDRAM; 8 keeps a 3 MB margin. The test asks 16 + 16 + 8 = 40 MB of an
+    // Old 3DS CIA's heap, about 57 MB in the 80 MB mode it asks for
+    // (CMakeLists.txt; a .3dsx under the Homebrew Launcher gets about 40, a
+    // New 3DS 86), and the ROM line of the log prints the figures.
     desc.rom_room_mb = 8;
     // Goemon saves to the Controller Pak and only starts a game when a pak is
     // reported at boot; the desktop reports a Rumble Pak (src/game/input.cpp).

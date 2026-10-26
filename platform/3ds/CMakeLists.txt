@@ -11,17 +11,16 @@ project(Goemon64Recompiled3DS LANGUAGES C CXX ASM)
 set(GOEMON_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
 set(RT64_3DS_DIR "${GOEMON_ROOT}/lib/rt64-3ds" CACHE PATH "rt64-3ds checkout")
 set(RT64_3DS_NMR_DIR "${GOEMON_ROOT}/lib/N64ModernRuntime")
-# No mods on the 3DS (RT64_3DS_STATIC_MODS stays off: RECOMP_NO_MODS). The
-# patches' RAM ends below rt64-3ds's default heap start (0x80A00000), which
-# rt64_3ds_check_patch_ram below checks, so RT64_3DS_HEAP_START is not set.
-# RDRAM is 12 MB instead of rt64-3ds's 16: the game's 8 MB, the patches'
-# RAM (0x80801000 to about 0x808B4000) and a 2 MB recomp heap from 0x80A00000
-# that nothing uses (the stats line's rheap peak is 0: no mods, no
-# recomp_alloc). The 4 MB saved let an Old 3DS hold the 16 MB ROM in memory
-# instead of streaming it from the SD card (main_3ds.cpp, rom_room_mb): its
-# CIA's heap is about 37 MB, and the port with the ROM held takes ROM 16 +
-# RDRAM + about 5 MB (the owner's console: 36-37 MB of arena with 16 MB).
-set(RT64_3DS_MEM_SIZE_MB 12)
+# The runtime's mod system, for the mods baked into the executable (below;
+# the Makefile's BAKE_MODS). The patches' RAM ends below rt64-3ds's default
+# heap start (0x80A00000), which rt64_3ds_check_patch_ram below checks, so
+# RT64_3DS_HEAP_START is not set: the baked mods' sections go there (Redub's
+# 33 KB; the German translation has no code), the recomp heap after them.
+set(RT64_3DS_STATIC_MODS ON)
+# RDRAM is rt64-3ds's 16 MB: the game's 8 MB, the patches' RAM (0x80801000
+# to about 0x808B4000) and 6 MB from 0x80A00000 for the mods' sections and
+# the recomp heap. The CIA asks an Old 3DS for 80 MB (add_cia below), which
+# holds the 16 MB ROM in memory beside it (main_3ds.cpp, rom_room_mb).
 # 32-bit N64 registers (N64Recomp's recomp.h, RECOMP_GPR32): Goemon's
 # recompiled code has no 64-bit register instruction, so the registers can be
 # the ARM11's own width (15-25% fewer instructions in the recompiled code).
@@ -30,7 +29,7 @@ set(RT64_3DS_MEM_SIZE_MB 12)
 # generated code ever gain such an instruction.
 add_compile_definitions(RECOMP_GPR32=1)
 add_subdirectory("${RT64_3DS_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/rt64-3ds")
-rt64_3ds_check_gpr32("${GOEMON_ROOT}/RecompiledFuncs" "${GOEMON_ROOT}/RecompiledPatches")
+rt64_3ds_check_gpr32("${GOEMON_ROOT}/RecompiledFuncs" "${GOEMON_ROOT}/RecompiledPatches" "${GOEMON_ROOT}/RecompiledMods")
 
 # The generated game code. goemon_host_protos.h makes the originals weak so
 # the patched functions in RecompiledPatches replace them (GCC's RECOMP_FUNC
@@ -61,9 +60,18 @@ target_compile_options(RecompiledPatches PRIVATE
 # game's file decompressor on the host (patches/required.c), stubs
 # for symbols upstream librecomp lacks, the retail ROM's conversion (run on
 # the first start, main_3ds.cpp) and the overlay and patch registration.
+# Mods baked into the executable: rt64-3ds tools/mod_bake's output for the
+# Makefile's BAKE_MODS (each mod's code, the dispatch table the recompiled
+# functions check, the embedded .nrm files and their registration).
+file(GLOB BAKED_MOD_SOURCES CONFIGURE_DEPENDS "${GOEMON_ROOT}/RecompiledMods/*.c")
+add_library(BakedMods STATIC ${BAKED_MOD_SOURCES} "${GOEMON_ROOT}/RecompiledMods/static_mods.cpp")
+target_link_libraries(BakedMods PRIVATE librecomp ultramodern)
+target_compile_options(BakedMods PRIVATE -O2 -fno-strict-aliasing $<$<COMPILE_LANGUAGE:C>:-w>)
+
 add_executable(Goemon64Recompiled3DS
     main_3ds.cpp
     recomp_api_3ds.cpp
+    file_patches.cpp
     "${GOEMON_ROOT}/rsp/aspMain.cpp"
     "${GOEMON_ROOT}/src/game/controller_pak.cpp"
     "${GOEMON_ROOT}/src/game/audio_interface.cpp"
@@ -89,7 +97,7 @@ set_source_files_properties("${GOEMON_ROOT}/rsp/aspMain.cpp" PROPERTIES COMPILE_
 set_source_files_properties("${GOEMON_ROOT}/src/main/register_patches.cpp" PROPERTIES
     OBJECT_DEPENDS "${GOEMON_ROOT}/RecompiledPatches/recomp_overlays.inl;${GOEMON_ROOT}/RecompiledPatches/funcs.h")
 target_link_libraries(Goemon64Recompiled3DS PRIVATE
-    recomp_3ds rt64_3ds RecompiledPatches RecompiledFuncs ultramodern librecomp citro3d ctru m)
+    recomp_3ds rt64_3ds RecompiledPatches RecompiledFuncs BakedMods ultramodern librecomp citro3d ctru m)
 target_link_options(Goemon64Recompiled3DS PRIVATE "-Wl,-Map,${CMAKE_CURRENT_BINARY_DIR}/Goemon64Recompiled3DS.map")
 rt64_3ds_check_patch_ram(Goemon64Recompiled3DS "${GOEMON_ROOT}/patches/build/patches.map")
 # Bring-up: accept the display lists and draw nothing.
@@ -107,7 +115,10 @@ add_3dsx(Goemon64Recompiled3DS TITLE "${GOEMON_3DSX_TITLE}" DESCRIPTION "${GOEMO
 include("${RT64_3DS_DIR}/cmake/Cia.cmake")
 # The banner: Goemon's golden kiseru and "Ganbare! Sou ganbare!" from the
 # opening song, fitted to 3 s, made by the tools in a separate repository
-# (3ds-banner-tools, examples/goemon); only their output is here.
+# (3ds-banner-tools, examples/goemon); only their output is here. An Old 3DS
+# runs the CIA in its 80 MB mode, as Banjo and DK64 do: the console restarts
+# when the game closes.
 add_cia(Goemon64Recompiled3DS RSF "${RT64_3DS_DIR}/cia/template.rsf" TITLE "${GOEMON_TITLE}" PRODUCT "GOEMON-3DS" UNIQUEID 0xF564E
         ICON "${CMAKE_CURRENT_LIST_DIR}/icon.png" DESCRIPTION "${GOEMON_DESCRIPTION}"
-        BANNER_CGFX "${CMAKE_CURRENT_LIST_DIR}/cia/banner.cgfx" BANNER_WAV "${CMAKE_CURRENT_LIST_DIR}/cia/banner.wav")
+        BANNER_CGFX "${CMAKE_CURRENT_LIST_DIR}/cia/banner.cgfx" BANNER_WAV "${CMAKE_CURRENT_LIST_DIR}/cia/banner.wav"
+        OLD3DS_MODE 80MB)

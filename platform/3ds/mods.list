@@ -1,0 +1,6 @@
+# Code mods built into the executable from source (build_mods.sh): those
+# without a released .nrm, from the submodules in mods/ (fetch them with
+# git submodule update --init --checkout platform/3ds/mods). One repository a
+# line. The released ones are in fetch_mods.sh.
+#   Enable Boss Rush (8AE; CC0): the Impact boss rush always in the Option menu.
+mnsg-enable-boss-rush

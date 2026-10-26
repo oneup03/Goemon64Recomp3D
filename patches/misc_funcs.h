@@ -13,5 +13,6 @@ DECLARE_FUNC(u16, recomp_get_pending_warp);
 DECLARE_FUNC(u32, recomp_get_pending_set_time);
 DECLARE_FUNC(s32, recomp_get_autosave_enabled);
 DECLARE_FUNC(u8*, recomp_decompress_file, u32 rom_addr, u8* dst, u32 size);
+DECLARE_FUNC(void, recomp_patch_file, u32 file_id, u8* dst, u32 size);
 
 #endif
