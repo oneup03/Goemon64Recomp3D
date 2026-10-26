@@ -109,11 +109,45 @@ void widen_overscan_scissor(Gfx *g) {
 }
 
 #ifdef GOEMON_3DS
+// @recomp The overscan rule for a fill rectangle (its lower-right corner inclusive)
+// spanning the frame between two edges within 16 pixels of it: both edges go to the
+// frame's, so the renderer spreads the colour over the wide screen with the world it
+// is behind. Each axis on its own: a letterbox keeps its rows.
+static void widen_overscan_fill(Gfx *g) {
+    u32 w0 = g->words.w0;
+    u32 w1 = g->words.w1;
+    u32 ulx, uly, lrx, lry;
+
+    if ((w0 >> 24) != G_FILLRECT) {
+        return;
+    }
+
+    lrx = (w0 >> 12) & 0xFFF;
+    lry = w0 & 0xFFF;
+    ulx = (w1 >> 12) & 0xFFF;
+    uly = w1 & 0xFFF;
+
+    if ((ulx <= (16 << 2)) && (lrx >= ((SCREEN_WIDTH - 1 - 16) << 2))) {
+        ulx = 0;
+        lrx = (SCREEN_WIDTH - 1) << 2;
+    }
+
+    if ((uly <= (16 << 2)) && (lry >= ((SCREEN_HEIGHT - 1 - 16) << 2))) {
+        uly = 0;
+        lry = (SCREEN_HEIGHT - 1) << 2;
+    }
+
+    g->words.w0 = (w0 & 0xFF000000) | (lrx << 12) | lry;
+    g->words.w1 = (w1 & 0xFF000000) | (ulx << 12) | uly;
+}
+
 // @recomp The same overscan rule for scissors that reach the frame's display list
 // without a camera: the Impact battles' overlay builds two small display lists of
 // its own every frame, a scissor and a fill rectangle clamped to (10,14)-(310,224)
 // (the world under a cinematic letterbox: (10,54)-(310,184)), and object nodes
-// copy them into the frame's list after the camera's widened scissor.
+// copy them into the frame's list after the camera's widened scissor. The fill
+// rectangle is the water's colour behind the world: left at 4:3, the wide screen's
+// sides stayed black (or showed the sky) beside it.
 static void widen_overscan_scissors(Gfx *start, Gfx *end) {
     Gfx *g;
 
@@ -124,6 +158,7 @@ static void widen_overscan_scissors(Gfx *start, Gfx *end) {
 
     for (g = start; g < end; g++) {
         widen_overscan_scissor(g);
+        widen_overscan_fill(g);
     }
 }
 
