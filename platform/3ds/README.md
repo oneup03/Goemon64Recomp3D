@@ -74,7 +74,9 @@ so the camera keeps turning; it eases back behind Goemon once you let go.
 
 SELECT opens the settings on the bottom screen: the 3D page (see Stereo
 3D), the sticks' deadzones and what the C-Stick does, and the Game page's
-frame rate, sky, music and sound volume.
+frame rate, sky, music and sound volume. Holding SELECT for a second saves a
+screenshot, or with the Game page's Hold SELECT on Debug Capture, a frame
+capture (`gfx_task.bin`) for bug reports.
 
 ## Stereo 3D
 
