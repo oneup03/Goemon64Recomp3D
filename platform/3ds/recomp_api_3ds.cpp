@@ -42,9 +42,10 @@ int g_goemon_se_volume = 100;
 int g_goemon_sky_3d = 1;
 
 // The host functions below that only the Majora's Mask template used
-// (targeting, autosave, the analog camera, the camera inversions): no Goemon
-// patch calls them. They stay for the symbol table (patches/syms.ld) and answer
-// with the desktop's defaults.
+// (targeting, autosave, the camera inversions): no Goemon patch calls them
+// but the analog camera (patches/camera.c), which reads the analog axes'
+// inversion. They stay for the symbol table (patches/syms.ld) and answer with
+// the desktop's defaults.
 constexpr s32 kTargetingSwitch = 0;
 constexpr int kInvertY = 2, kInvertNone = 0;
 
@@ -155,13 +156,15 @@ extern "C" void recomp_get_resolution_scale(uint8_t* rdram, recomp_context* ctx)
 extern "C" void recomp_get_inverted_axes(uint8_t* rdram, recomp_context* ctx) { return_axes(rdram, ctx, kInvertY); }
 extern "C" void recomp_get_analog_inverted_axes(uint8_t* rdram, recomp_context* ctx) { return_axes(rdram, ctx, kInvertNone); }
 
+// The analog camera (patches/camera.c): on while the Controls page's C-Stick
+// row is on Camera (GameDesc::cstick_camera_analog_x).
 extern "C" void recomp_get_analog_cam_enabled(uint8_t* rdram, recomp_context* ctx) {
     (void)rdram;
-    _return<s32>(ctx, 0);   // off
+    _return<s32>(ctx, recomp3ds::cstick_camera_analog() ? 1 : 0);
 }
 
-// The analog camera's stick, were a patch to read it: the C-Stick, with the
-// C-Stick deadzone of the Controls page.
+// The analog camera's stick: the C-Stick, with the C-Stick deadzone of the
+// Controls page.
 extern "C" void recomp_get_camera_inputs(uint8_t* rdram, recomp_context* ctx) {
     float* x_out = _arg<0, float*>(rdram, ctx);
     float* y_out = _arg<1, float*>(rdram, ctx);

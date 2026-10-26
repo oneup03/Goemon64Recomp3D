@@ -167,17 +167,20 @@ int main(int argc, char** argv) {
     // Goemon saves to the Controller Pak and only starts a game when a pak is
     // reported at boot; the desktop reports a Rumble Pak (src/game/input.cpp).
     desc.controller_pak = ultramodern::input::Pak::RumblePak;
-    // The C-Stick turns the camera: Goemon's camera turns 45 degrees for each
+    // The C-Stick moves the camera. Goemon's camera turns 45 degrees for each
     // C-Left/Right pressed while R is held (C-Up/Down zoom), easing back
     // behind the player once the presses stop, and a C press that comes in
-    // the same frame as R is ignored. The C-Stick holds R and, 70 ms later,
-    // presses its way's C button for 100 ms every 267 ms (8 game frames, one
-    // turn's length, measured in Azahar: the turns then run into each other).
-    // The Controls page's "C-Stick" row gives the plain C buttons back.
+    // the same frame as R is ignored. The C-Stick's left and right turn it
+    // smoothly instead (patches/camera.c reads the stick, and a tap of R turns
+    // it back behind the player); its up and down hold R and, 70 ms later,
+    // press that way's C button for 100 ms every 267 ms (8 game frames, one
+    // zoom step's length, measured in Azahar). The Controls page's "C-Stick"
+    // row gives the plain C buttons back.
     desc.cstick_camera_hold = N64_R;
     desc.cstick_camera_lead_ms = 70;
     desc.cstick_camera_press_ms = 100;
     desc.cstick_camera_period_ms = 267;
+    desc.cstick_camera_analog_x = true;
 
     desc.render.game_name = "Mystical Ninja Starring Goemon";
     desc.render.gbi = rt64_3ds::Gbi::F3DEX;     // F3DEX 1.23

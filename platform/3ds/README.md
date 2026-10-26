@@ -58,7 +58,7 @@ sdmc:/
 | ZL, D-pad left | C-Left |
 | ZR, D-pad right | C-Right |
 | Circle Pad | analog stick |
-| C-Stick | the camera: R + C buttons, repeated while held (or the plain C buttons: Controls settings) |
+| C-Stick | the camera: left/right turn it, up/down zoom (or the plain C buttons: Controls settings) |
 
 The Controls page maps each button (A, B, X, Y, L, R, ZL, ZR and the
 D-pad's directions) to any N64 button, adds up to two N64 buttons on the
@@ -68,9 +68,12 @@ bottom screen's frame rate and text; touch buttons stay. The Game page
 also sets each screen's brightness.
 
 The game never reads the N64's L or D-pad. R with the C buttons moves the
-camera (C-Left/Right turn it, C-Up/Down zoom). The C-Stick does that by
-itself: it holds R and keeps pressing its way's C button while it is held,
-so the camera keeps turning; it eases back behind Goemon once you let go.
+camera (C-Left/Right turn it 45 degrees, C-Up/Down zoom), and the camera
+swings back behind Goemon whenever he stands still. The C-Stick turns it
+smoothly instead: push it left or right and the camera stays where you
+leave it, until a tap of R swings it back behind Goemon (and the game's own
+swing returns). Up and down zoom, holding R and pressing C-Up or C-Down for
+you.
 
 SELECT opens the settings on the bottom screen: the 3D page (see Stereo
 3D), the sticks' deadzones and what the C-Stick does, and the Game page's
