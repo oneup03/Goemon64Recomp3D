@@ -85,7 +85,9 @@ The status bar and the map are on the touch screen by default, leaving the
 top screen to the game; the Game page's HUD row puts them back on the top
 screen. On the touch screen the map is always up in towns and fields (C-Right
 no longer hides it; talking and cutscenes still do), at the top left, with
-any touch buttons beside it. Dialogue, menus and the Impact battles
+any touch buttons beside it. In the castles it shows the floor you're on,
+as the pause screen's map does once you have that castle's map: the rooms
+you've been in, the one you're in pulsing red, north up. Dialogue, menus and the Impact battles
 stay on the top screen. The touch screen's performance text is off by
 default (Performance monitor) so it doesn't cover the HUD. Holding SELECT for a second saves a
 screenshot, or with the Game page's Hold SELECT on Debug Capture, a frame
