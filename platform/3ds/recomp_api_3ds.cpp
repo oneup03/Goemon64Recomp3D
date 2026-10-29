@@ -163,6 +163,12 @@ extern "C" void recomp_get_analog_cam_enabled(uint8_t* rdram, recomp_context* ct
     _return<s32>(ctx, recomp3ds::cstick_camera_analog() ? 1 : 0);
 }
 
+// The HUD on the touch screen (patches/hud_screen.c): the Game page's HUD row.
+extern "C" void recomp_get_hud_on_bottom(uint8_t* rdram, recomp_context* ctx) {
+    (void)rdram;
+    _return<s32>(ctx, recomp3ds::hud_on_bottom() ? 1 : 0);
+}
+
 // The analog camera's stick: the C-Stick, with the C-Stick deadzone of the
 // Controls page.
 extern "C" void recomp_get_camera_inputs(uint8_t* rdram, recomp_context* ctx) {

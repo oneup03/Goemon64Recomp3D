@@ -74,7 +74,7 @@ codegen:
 patches: patches-elf mods patches-recomp
 
 patches-elf:
-	cd $(ROOT)/patches && $(MAKE) clean && $(if $(LLD_LIBS),LD_LIBRARY_PATH=$(LLD_LIBS)) $(MAKE) CC=$(PATCH_CC) LD=$(LLD) PLATFORM_CPPFLAGS=-DGOEMON_3DS
+	cd $(ROOT)/patches && $(MAKE) clean && $(if $(LLD_LIBS),LD_LIBRARY_PATH=$(LLD_LIBS)) $(MAKE) CC=$(PATCH_CC) LD=$(LLD) PLATFORM_CPPFLAGS="-DGOEMON_3DS -I$(RT64_3DS)/include"
 
 # The mods of mods.list, from their submodules (mods/; fetch them with
 # git submodule update --init --checkout platform/3ds/mods).

@@ -78,7 +78,16 @@ you.
 
 SELECT opens the settings on the bottom screen: the 3D page (see Stereo
 3D), the sticks' deadzones and what the C-Stick does, and the Game page's
-frame rate, sky, music and sound volume. Holding SELECT for a second saves a
+frame rate, sky, music and sound volume, where the HUD goes and how much
+goes to `log.txt` (Log level).
+
+The status bar and the map are on the touch screen by default, leaving the
+top screen to the game; the Game page's HUD row puts them back on the top
+screen. On the touch screen the map is always up in towns and fields (C-Right
+no longer hides it; talking and cutscenes still do), at the top left, with
+any touch buttons beside it. Dialogue, menus and the Impact battles
+stay on the top screen. The touch screen's performance text is off by
+default (Performance monitor) so it doesn't cover the HUD. Holding SELECT for a second saves a
 screenshot, or with the Game page's Hold SELECT on Debug Capture, a frame
 capture (`gfx_task.bin`) for bug reports.
 

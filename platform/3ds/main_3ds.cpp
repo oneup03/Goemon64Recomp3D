@@ -209,6 +209,14 @@ int main(int argc, char** argv) {
     // quad in front of the camera, sized to the 4:3 frame: stretched to cover
     // the wide screen, on the screen plane.
     desc.render.stretch_tint_quads = true;
+    // The status bar and the map on the touch screen (patches/hud_screen.c
+    // marks them), the Game page's HUD row choosing.
+    desc.render.hud_on_bottom_supported = true;
+    // Its touch buttons there: right of the map, which stays at the top left
+    // (x 152..319, y 40..175), clear of it, the bar and the status lines.
+    desc.touch_area_hud = { 19, 5, 21, 17 };
+    // No aiming reticle for the renderer to place: no Crosshair row.
+    desc.render.crosshair_row = false;
     // Backdrops at infinity shift by the full separation per eye; scaled by
     // 1 + that shift about the frame's centre they still cover the screen
     // (the desktop's skybox-rect cover zoom) instead of baring a strip.
