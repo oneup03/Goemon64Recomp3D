@@ -16,8 +16,15 @@ Camera g_widescreen_camera;
 // their own near-full-screen one (the Impact battles' camera: (10,14)-(310,240)).
 // On the N64 such borders sat in the TV's overscan, so any edge within 16 pixels
 // of the screen's goes to the edge and the scene fills a wide screen. Cutscenes'
-// cinematic letterboxing uses deeper bars than that and is kept.
+// cinematic letterboxing uses deeper bars than that and is kept. An empty scissor
+// stays empty: the Impact battles hide the sky behind one that ends at row 14, at or
+// above its top, and moving that top to the screen's showed the sky in the top 14
+// rows.
 static void widen_camera_scissor(Camera *cam) {
+    if ((cam->scissor_lrx <= cam->scissor_ulx) || (cam->scissor_lry <= cam->scissor_uly)) {
+        return;
+    }
+
     if ((cam->scissor_ulx > 0) && (cam->scissor_ulx <= 16)) {
         cam->scissor_ulx = 0;
     }
@@ -73,7 +80,8 @@ static u32 goemon_projection_id_for_camera(const Camera *cam) {
 #endif
 
 // @recomp widen_camera_scissor's rule for a scissor command (coordinates in 10.2
-// fixed point): an edge within 16 pixels of the screen's goes to it.
+// fixed point): an edge within 16 pixels of the screen's goes to it, and an empty
+// scissor stays empty.
 void widen_overscan_scissor(Gfx *g) {
     u32 w0 = g->words.w0;
     u32 w1 = g->words.w1;
@@ -87,6 +95,10 @@ void widen_overscan_scissor(Gfx *g) {
     uly = w0 & 0xFFF;
     lrx = (w1 >> 12) & 0xFFF;
     lry = w1 & 0xFFF;
+
+    if ((lrx <= ulx) || (lry <= uly)) {
+        return;
+    }
 
     if ((ulx > 0) && (ulx <= (16 << 2))) {
         ulx = 0;
