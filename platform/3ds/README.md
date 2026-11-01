@@ -23,8 +23,8 @@ Download the latest build from the [releases page](https://github.com/oneup03/Go
 Both use the same folder and need your own ROM: the US version of Mystical
 Ninja Starring Goemon in .z64 format (the 16 MB file the desktop version
 asks for), at `sdmc:/3ds/Goemon64/mnsg.us.z64`. The game checks the ROM's
-hash at start and deletes a file that does not match, so copy it rather
-than move it.
+hash at start: another version or a damaged file is left where it is, and
+the game says so and exits.
 
 Sound needs nothing more: the game brings its own DSP firmware, OpenDSP
 (BSD 2-Clause, Copyright (c) 2026 Cellenseres; its licence is
@@ -34,15 +34,19 @@ firmware at `sdmc:/3ds/dspfirm.cdc`, without reverb: dump that once with
 Luma3DS (the Rosalina menu, L + D-pad down + SELECT, then Miscellaneous
 options > Dump DSP firmware).
 
-On the SD card, once installed:
+On the SD card, once installed and played:
 
 ```
 sdmc:/
   3ds/
     Goemon64/
-      Goemon64.3dsx      the program (not needed with the CIA installed)
-      mnsg.us.z64        your ROM
-      OpenDSP-LICENSE.txt OpenDSP's licence (from the release zip)
+      Goemon64.3dsx            the program (not needed with the CIA installed)
+      mnsg.us.z64              your ROM
+      README.md, *-LICENSE.txt this file and the licences (release zip)
+      saves/mnsg.us.bin        your saved games
+      settings.ini             the settings
+      log.txt                  the log (the Game page's Log level)
+      screenshots/             screenshots (hold SELECT)
 ```
 
 ## Controls
@@ -77,21 +81,34 @@ swing returns). Up and down zoom, holding R and pressing C-Up or C-Down for
 you.
 
 SELECT opens the settings on the bottom screen: the 3D page (see Stereo
-3D), the sticks' deadzones and what the C-Stick does, and the Game page's
-frame rate, sky, music and sound volume, where the HUD goes and how much
-goes to `log.txt` (Log level).
+3D), the Controls page, the Game page (frame rate, sky, sound on or off,
+music and sound volume, where the HUD goes, screen brightness, and how much
+goes to `log.txt`: Log level) and the Mods page (see Mods). Settings are
+kept in `settings.ini`.
 
 The status bar and the map are on the touch screen by default, leaving the
 top screen to the game; the Game page's HUD row puts them back on the top
-screen. On the touch screen the map is always up in towns and fields (C-Right
-no longer hides it; talking and cutscenes still do), at the top left, with
-any touch buttons beside it. In the castles it shows the floor you're on,
-as the pause screen's map does once you have that castle's map: the rooms
-you've been in, the one you're in pulsing red, north up. Dialogue, menus and the Impact battles
-stay on the top screen. The touch screen's performance text is off by
-default (Performance monitor) so it doesn't cover the HUD. Holding SELECT for a second saves a
-screenshot, or with the Game page's Hold SELECT on Debug Capture, a frame
-capture (`gfx_task.bin`) for bug reports.
+screen. On the touch screen the map is always up in towns and fields
+(C-Right no longer hides it; talking and cutscenes still do), at the top
+left, with any touch buttons beside it. In the castles it shows the floor
+you're on, as the pause screen's map does once you have that castle's map:
+the rooms you've been in, the one you're in pulsing red, north up.
+Dialogue, menus and the Impact battles stay on the top screen. The touch
+screen's performance text is off by default (Performance monitor) so it
+doesn't cover the HUD.
+
+Holding SELECT for a second saves a screenshot of both screens to
+`screenshots/`, or with the Game page's Hold SELECT on Debug Capture, a
+frame capture (`gfx_task.bin`) for bug reports.
+
+HOME opens a quit prompt on the touch screen instead of the HOME Menu: A
+quits, B (or HOME again) goes back to the game, which waits meanwhile.
+Quitting writes the game's last save first. Where there is no HOME Menu
+behind the game (an Old 3DS running the CIA, see Performance), quitting
+restarts the console into it, and POWER opens the same prompt. Closing the
+lid puts the console to sleep as usual, and the game and its music carry
+on when it's opened. Luma3DS's Rosalina menu (L + D-pad down + SELECT)
+opens during play; that SELECT doesn't open the settings.
 
 ## Stereo 3D
 
@@ -190,15 +207,20 @@ make -C platform/3ds cia                    # build-3ds/Goemon64Recompiled3DS.3d
 `make configure CMAKE_ARGS=-DGOEMON_NULL_RENDERER=ON` and a build give one
 that draws nothing (bring-up). The header of `platform/3ds/Makefile` lists
 the other targets. `codegen` downloads the built-in mods' releases
-(`fetch_mods.sh`, pinned by SHA-256) into `build-mods/` and bakes them into
-`RecompiledMods/` (rt64-3ds `tools/mod_bake`). `make codegen` rebuilds the patches with `GOEMON_3DS`
-into `patches/build/` and `RecompiledPatches/`, which the desktop build
-shares; it regenerates its own when it is next built. The `build-3ds` job in
+(`fetch_mods.sh`, pinned by SHA-256) into `build-mods/`, builds the one
+without a release, Enable Boss Rush, from its submodule (`build_mods.sh`,
+`mods.list`; the recursive update skips it, so fetch it with
+`git submodule update --init --checkout platform/3ds/mods`), and bakes
+them into `RecompiledMods/` (rt64-3ds `tools/mod_bake`). `make codegen`
+rebuilds the patches with `GOEMON_3DS` into `patches/build/` and
+`RecompiledPatches/`, which the desktop build shares; it regenerates its own
+when it is next built. The `build-3ds` job in
 `.github/workflows/release.yml` runs the same steps in devkitPro's container.
 
 `tests/` holds input scripts for unattended runs in Azahar (rt64-3ds's
-`tools/azahar-run.sh --script`): `boot.txt` (the first start, from the ROM
-conversion; null renderer), `title.txt` and `newgame.txt`.
+`tools/azahar-run.sh --script`): `boot.txt` (the first start; null
+renderer), `title.txt`, `newgame.txt` and `gameplay.txt` (from the title
+into Oedo Town, a walk and camera turns).
 
 The CIA's banner is a 3D model of Goemon's golden kiseru
 (`cia/banner.cgfx`) with "Ganbare! Sou ganbare!" from the opening song
