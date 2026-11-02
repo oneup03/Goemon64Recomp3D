@@ -142,15 +142,22 @@ static u32 s_sky_last_step = 0;
 #define SKY_COLUMN_TEXELS       32
 #define SKY_BAND_ROWS           48
 // Past the panorama's top and bottom rows the sky continues as caps, curving
-// up to this elevation (and down to its negative), each stretching the edge
-// row - so a camera that pitches up in a cutscene sees the top of the sky
-// rather than nothing.
+// up to this elevation (and down to its negative) - so a camera that pitches
+// up in a cutscene sees the top of the sky rather than nothing.
 #define SKY_CAP_ELEVATION       (88.0f * SKY_PI / 180.0f)
-// The top cap stretches the panorama's top row only this far up, fading from
-// it to one sky colour (the top row's commonest): stretched all the way to the
-// pole, the sun and the clouds that touch the top row drew white streaks
-// across the dome.
+// Each cap is one sky colour, that of its edge row (sky_measure_edge): a row
+// of one colour with specks in it (space's stars, a dithered sky) goes on in
+// it from the edge, and any other stretches the row only this far, fading
+// from it to the colour. Stretched all the way to the pole, the sun and the
+// clouds that touch the top row drew white streaks across the dome, and the
+// stars of the Impact battles' space streaks above and below.
 #define SKY_CAP_FADE            (6.0f * SKY_PI / 180.0f)
+// A row is plain when this share of its texels (in tenths) is within
+// SKY_PLAIN_DISTANCE of its commonest colour, in every channel (0-255):
+// space's rows are 93-99% near black, a dithered red sky's 99%, the sunset
+// field's cloudy top row 61%.
+#define SKY_PLAIN_TENTHS        9
+#define SKY_PLAIN_DISTANCE      24
 // Pitch beyond which every column is drawn: looking steeply up or down, the
 // columns behind the camera come into view.
 #define SKY_CULL_PITCH_SIN      0.34f
@@ -166,10 +173,15 @@ static u32 s_sky_last_step = 0;
 // game's vertical scroll, the tangent of the camera's pitch and cot(fovy / 2)
 // when it was anchored.
 static f32 s_sky_u_at_zero_bearing = 0.0f;
-// The sky colour the top cap fades to (sky_measure_zenith), measured when the
-// cylinder is anchored.
-static u8 s_sky_zenith[3] = { 0, 0, 0 };
-static int s_sky_zenith_valid = 0;
+// The caps' colours, top and bottom (sky_measure_edge), measured when the
+// cylinder is anchored, and how each meets the panorama: SKY_CAP_STRETCH (a
+// texture the CPU cannot read: the edge row all the way), SKY_CAP_FADE_IN or
+// SKY_CAP_PLAIN.
+#define SKY_CAP_STRETCH         0
+#define SKY_CAP_FADE_IN         1
+#define SKY_CAP_PLAIN           2
+static u8 s_sky_cap_colour[2][3] = { { 0, 0, 0 }, { 0, 0, 0 } };
+static int s_sky_cap_mode[2] = { SKY_CAP_STRETCH, SKY_CAP_STRETCH };
 static f32 s_sky_texels_per_radian = 0.0f;
 static f32 s_sky_anchor_sy = 0.0f;
 static f32 s_sky_anchor_tan_pitch = 0.0f;
@@ -316,10 +328,33 @@ static const u8 *sky_cpu_address(BackgroundGraphicsNode *node, const u8 *p) {
     return p;
 }
 
-// The open sky's colour: the commonest texel of the panorama's top row (the
-// sun and the clouds that reach it are the minority there), decoded through
-// the palette for CI textures. 0 for a format it does not read.
-static int sky_measure_zenith(BackgroundGraphicsNode *node, u8 *rgb) {
+// A texel of the panorama as RGB: CI through the palette, IA as grey, RGBA
+// 5551; 0 for a format it does not read (8-bit RGBA, I).
+static int sky_texel_rgb(u16 v, int is_8b, int is_ci, int is_ia, const u8 *palette, u8 *rgb) {
+    if (is_ia) {
+        const u8 intensity = is_8b ? (u8)((v >> 4) * 17) : (u8)(v >> 8);
+        rgb[0] = rgb[1] = rgb[2] = intensity;
+        return 1;
+    }
+    if (is_ci) {
+        v = (u16)((palette[2 * v] << 8) | palette[2 * v + 1]);
+    }
+    else if (is_8b) {
+        return 0;
+    }
+    rgb[0] = (u8)((((v >> 11) & 0x1F) << 3) | (((v >> 11) & 0x1F) >> 2));
+    rgb[1] = (u8)((((v >> 6) & 0x1F) << 3) | (((v >> 6) & 0x1F) >> 2));
+    rgb[2] = (u8)((((v >> 1) & 0x1F) << 3) | (((v >> 1) & 0x1F) >> 2));
+    return 1;
+}
+
+// A cap's colour, from the panorama's edge row `row`: the mean of the texels
+// near its commonest one (the sun and the clouds that reach the top row, and
+// space's stars, are the minority there; a dithered row's two shades are
+// near each other). Returns how the cap meets the row: SKY_CAP_PLAIN when
+// nearly all of it is that colour, SKY_CAP_FADE_IN otherwise, and
+// SKY_CAP_STRETCH for a format or address it does not read.
+static int sky_measure_edge(BackgroundGraphicsNode *node, s32 row, u8 *rgb) {
     u16 values[32];
     u16 counts[32];
     const s32 width = node->texture_width;
@@ -329,12 +364,15 @@ static int sky_measure_zenith(BackgroundGraphicsNode *node, u8 *rgb) {
     const u8 *texture = sky_cpu_address(node, node->texture_data);
     const u8 *palette = is_ci ? sky_cpu_address(node, node->palette_data) : NULL;
     int n = 0, i, best = -1;
-    s32 x;
+    s32 x, matching = 0;
+    u32 sum[3] = { 0, 0, 0 };
+    u8 common[3], c[3];
     u16 v;
 
     if ((texture == NULL) || (width <= 0) || (is_ci && (!is_8b || (palette == NULL)))) {
-        return 0;
+        return SKY_CAP_STRETCH;
     }
+    texture += row * width * (is_8b ? 1 : 2);
     for (x = 0; x < width; x++) {
         v = is_8b ? texture[x] : (u16)((texture[2 * x] << 8) | texture[2 * x + 1]);
         for (i = 0; (i < n) && (values[i] != v); i++) {
@@ -354,26 +392,25 @@ static int sky_measure_zenith(BackgroundGraphicsNode *node, u8 *rgb) {
             best = i;
         }
     }
-    if (best < 0) {
-        return 0;
+    if ((best < 0) || !sky_texel_rgb(values[best], is_8b, is_ci, is_ia, palette, common)) {
+        return SKY_CAP_STRETCH;
     }
-    v = values[best];
-    if (is_ia) {
-        const u8 intensity = is_8b ? (u8)((v >> 4) * 17) : (u8)(v >> 8);
-        rgb[0] = rgb[1] = rgb[2] = intensity;
-        return 1;
+    for (x = 0; x < width; x++) {
+        v = is_8b ? texture[x] : (u16)((texture[2 * x] << 8) | texture[2 * x + 1]);
+        sky_texel_rgb(v, is_8b, is_ci, is_ia, palette, c);
+        for (i = 0; (i < 3) && (c[i] - common[i] <= SKY_PLAIN_DISTANCE) && (common[i] - c[i] <= SKY_PLAIN_DISTANCE); i++) {
+        }
+        if (i == 3) {
+            sum[0] += c[0];
+            sum[1] += c[1];
+            sum[2] += c[2];
+            matching++;
+        }
     }
-    if (is_ci) {
-        v = (u16)((palette[2 * v] << 8) | palette[2 * v + 1]);
+    for (i = 0; i < 3; i++) {
+        rgb[i] = (u8)(sum[i] / (u32)matching);
     }
-    else if (is_8b) {
-        return 0;
-    }
-    // RGBA 5551.
-    rgb[0] = (u8)((((v >> 11) & 0x1F) << 3) | (((v >> 11) & 0x1F) >> 2));
-    rgb[1] = (u8)((((v >> 6) & 0x1F) << 3) | (((v >> 6) & 0x1F) >> 2));
-    rgb[2] = (u8)((((v >> 1) & 0x1F) << 3) | (((v >> 1) & 0x1F) >> 2));
-    return 1;
+    return (matching * 10 >= width * SKY_PLAIN_TENTHS) ? SKY_CAP_PLAIN : SKY_CAP_FADE_IN;
 }
 
 // The scroll's whole widths per turn from the scroll and the heading turned
@@ -665,7 +702,8 @@ static int sky_track(BackgroundGraphicsNode *node) {
         s_sky_anchor_sy = node->start_y;
         s_sky_anchor_tan_pitch = scroll_tan_pitch;
         s_sky_anchor_cot = s_sky_cot;
-        s_sky_zenith_valid = sky_measure_zenith(node, s_sky_zenith);
+        s_sky_cap_mode[0] = sky_measure_edge(node, 0, s_sky_cap_colour[0]);
+        s_sky_cap_mode[1] = sky_measure_edge(node, node->texture_height - 1, s_sky_cap_colour[1]);
     }
     s_sky_last_step = g_game_step;
     return 1;
@@ -931,11 +969,11 @@ static void sky_draw_3d(BackgroundGraphicsNode *node) {
         f32 cap_y[2][4];
         s32 cap_rings[2];
         s32 k, b, cap, ring;
-        // The top cap fades to the sky colour (SKY_CAP_FADE): drawn after the
-        // rest, with its own combiner, for these columns.
-        const int top_fade = s_sky_zenith_valid;
-        s32 fade_column[SKY_MAX_EDGES];
-        s32 fade_count = 0;
+        // The caps in their colour (all but SKY_CAP_STRETCH): drawn after the
+        // rest, with a combiner of their own, for these columns.
+        const int coloured_caps = (s_sky_cap_mode[0] != SKY_CAP_STRETCH) || (s_sky_cap_mode[1] != SKY_CAP_STRETCH);
+        s32 colour_column[SKY_MAX_EDGES];
+        s32 colour_count = 0;
 
         u_start = (f32)SKY_COLUMN_TEXELS * sky_floor((s_sky_u_at_zero_bearing - SKY_PI * K) / (f32)SKY_COLUMN_TEXELS);
         for (k = 0; k <= column_count; k++) {
@@ -964,17 +1002,17 @@ static void sky_draw_3d(BackgroundGraphicsNode *node) {
 
         // The caps' rings: ring 0 is the cylinder's own edge (radius R at the
         // edge height), rings 1 and 2 step towards the pole on the sphere of the
-        // same directions. With the fade, the top cap's ring 1 is SKY_CAP_FADE
-        // above the edge and rings 2 and 3 step on to the pole.
+        // same directions. With a fade, ring 1 is SKY_CAP_FADE beyond the edge
+        // and rings 2 and 3 step on to the pole.
         for (cap = 0; cap < 2; cap++) {
             const f32 edge_height = (cap == 0) ? band_y[0] : band_y[band_count - 1];
             const f32 edge_elevation = sky_atan2(edge_height, SKY_RADIUS);
             const f32 end_elevation = (cap == 0) ? SKY_CAP_ELEVATION : -SKY_CAP_ELEVATION;
-            f32 fade_elevation = edge_elevation + SKY_CAP_FADE;
-            if (fade_elevation > end_elevation) {
+            f32 fade_elevation = (cap == 0) ? edge_elevation + SKY_CAP_FADE : edge_elevation - SKY_CAP_FADE;
+            if (((cap == 0) && (fade_elevation > end_elevation)) || ((cap == 1) && (fade_elevation < end_elevation))) {
                 fade_elevation = end_elevation;
             }
-            cap_rings[cap] = ((cap == 0) && top_fade) ? 3 : 2;
+            cap_rings[cap] = (s_sky_cap_mode[cap] == SKY_CAP_FADE_IN) ? 3 : 2;
             cap_radius[cap][0] = SKY_RADIUS;
             cap_y[cap][0] = edge_height;
             for (ring = 1; ring <= cap_rings[cap]; ring++) {
@@ -1017,14 +1055,16 @@ static void sky_draw_3d(BackgroundGraphicsNode *node) {
                 quad_count++;
             }
 
-            // The caps, each stretching its edge row: the same t the cylinder's
+            // The caps that stretch their edge row: the same t the cylinder's
             // edge samples (0 at the top, the full height at the bottom), so the
             // colour carries straight across the join.
+            if (coloured_caps) {
+                colour_column[colour_count++] = column;
+            }
             for (cap = 0; cap < 2; cap++) {
                 const f32 t_edge = (cap == 0) ? 0.0f : (f32)texture_height;
                 const s32 edge_row = (cap == 0) ? 0 : (texture_height - 1);
-                if ((cap == 0) && top_fade) {
-                    fade_column[fade_count++] = column;
+                if (s_sky_cap_mode[cap] != SKY_CAP_STRETCH) {
                     continue;
                 }
                 for (ring = 0; ring < cap_rings[cap]; ring++) {
@@ -1053,11 +1093,12 @@ static void sky_draw_3d(BackgroundGraphicsNode *node) {
             }
         }
 
-        // The top cap with the fade: the game's combiner with its colour made
+        // The caps in their colour: the game's combiner with its colour made
         // (TEXEL0 - SHADE) * SHADE_ALPHA + SHADE in both cycles (its alpha, and
-        // so its fades, kept), the shade the sky colour, its alpha 255 at the
-        // panorama's edge and 0 from SKY_CAP_FADE above it.
-        if (fade_count > 0) {
+        // so its fades, kept), the shade the cap's colour, its alpha 255 at the
+        // panorama's edge and 0 from SKY_CAP_FADE beyond it with a fade, 0
+        // throughout for a plain one.
+        if (colour_count > 0) {
             gDPPipeSync(gfx++);
             gfx->words.w0 = (game_cc_w0 & ~((0xFu << 20) | (0x1Fu << 15) | (0xFu << 5) | 0x1Fu)) |
                 (G_CCMUX_TEXEL0 << 20) | (G_CCMUX_SHADE_ALPHA << 15) | (G_CCMUX_TEXEL0 << 5) | G_CCMUX_SHADE_ALPHA;
@@ -1065,26 +1106,34 @@ static void sky_draw_3d(BackgroundGraphicsNode *node) {
                 ((u32)G_CCMUX_SHADE << 28) | (G_CCMUX_SHADE << 24) | (G_CCMUX_SHADE << 15) | (G_CCMUX_SHADE << 6);
             gfx++;
             gSPSetGeometryMode(gfx++, G_SHADE | G_SHADING_SMOOTH);
-            for (k = 0; k < fade_count; k++) {
-                const s32 c = fade_column[k];
+            for (k = 0; k < colour_count; k++) {
+                const s32 c = colour_column[k];
                 const f32 u0 = u_start + (f32)(c * SKY_COLUMN_TEXELS);
                 const s32 texel0 = (s32)sky_wrap(u0, (f32)texture_width);
-                for (ring = 0; ring < cap_rings[0]; ring++) {
-                    const f32 ra = cap_radius[0][ring];
-                    const f32 rb = cap_radius[0][ring + 1];
-                    if (cap_y[0][ring] == cap_y[0][ring + 1]) {
+                for (cap = 0; cap < 2; cap++) {
+                    const f32 t_edge = (cap == 0) ? 0.0f : (f32)texture_height;
+                    const s32 edge_row = (cap == 0) ? 0 : (texture_height - 1);
+                    const int fade = (s_sky_cap_mode[cap] == SKY_CAP_FADE_IN);
+                    if (s_sky_cap_mode[cap] == SKY_CAP_STRETCH) {
                         continue;
                     }
-                    if (quad_count >= SKY_MAX_QUADS) {
-                        break;
+                    for (ring = 0; ring < cap_rings[cap]; ring++) {
+                        const f32 ra = cap_radius[cap][ring];
+                        const f32 rb = cap_radius[cap][ring + 1];
+                        if (cap_y[cap][ring] == cap_y[cap][ring + 1]) {
+                            continue;
+                        }
+                        if (quad_count >= SKY_MAX_QUADS) {
+                            break;
+                        }
+                        sky_emit_quad(&gfx, &vertices[quad_count * 4], node, image_format, image_size,
+                            (f32)sky_round(ra * dir_x[c]), cap_y[cap][ring], (f32)sky_round(ra * dir_z[c]),
+                            (f32)sky_round(ra * dir_x[c + 1]), cap_y[cap][ring], (f32)sky_round(ra * dir_z[c + 1]),
+                            (f32)sky_round(rb * dir_x[c + 1]), cap_y[cap][ring + 1], (f32)sky_round(rb * dir_z[c + 1]),
+                            (f32)sky_round(rb * dir_x[c]), cap_y[cap][ring + 1], (f32)sky_round(rb * dir_z[c]),
+                            texel0, t_edge, t_edge, edge_row, edge_row, s_sky_cap_colour[cap], (fade && (ring == 0)) ? 0xFF : 0x00, 0x00);
+                        quad_count++;
                     }
-                    sky_emit_quad(&gfx, &vertices[quad_count * 4], node, image_format, image_size,
-                        (f32)sky_round(ra * dir_x[c]), cap_y[0][ring], (f32)sky_round(ra * dir_z[c]),
-                        (f32)sky_round(ra * dir_x[c + 1]), cap_y[0][ring], (f32)sky_round(ra * dir_z[c + 1]),
-                        (f32)sky_round(rb * dir_x[c + 1]), cap_y[0][ring + 1], (f32)sky_round(rb * dir_z[c + 1]),
-                        (f32)sky_round(rb * dir_x[c]), cap_y[0][ring + 1], (f32)sky_round(rb * dir_z[c]),
-                        texel0, 0.0f, 0.0f, 0, 0, s_sky_zenith, (ring == 0) ? 0xFF : 0x00, 0x00);
-                    quad_count++;
                 }
             }
         }

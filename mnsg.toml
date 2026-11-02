@@ -99,3 +99,43 @@ text = """
       if (recomp3ds_synth_skip_build(rdram, (uint32_t)ctx->r17, (int32_t)ctx->r19, (uint32_t)ctx->r20)) { ctx->r19 = 0; ctx->r20 += 8; } }
 #endif
 """
+
+# 3DS: the ending's sepia photos. The game turns the frame it has just drawn
+# into a 4-bit picture, reading the framebuffer in RDRAM: func_8022669C the
+# last scene's (full screen), func_08000770 each credit's (320x208). The 3DS
+# renderer never writes the framebuffer, so once a0 holds its address, rt64-3ds
+# copies its last frame there (goemon3ds_photo_hook, platform/3ds/
+# recomp_api_3ds.cpp), from the frames it keeps meanwhile: through the
+# ending's last scene (its director in state 23; Redub replaces the director,
+# func_8021F9CC, so the hook is on func_8020D2A0, which both versions call
+# first, with the director in a0) and the credits (their director).
+[[patches.hook]]
+func = "func_8020D2A0_676C80"
+text = """
+#ifdef __3DS__
+    { extern void goemon3ds_photo_hook(uint8_t*, void*, int); goemon3ds_photo_hook(rdram, ctx, 0); }
+#endif
+"""
+[[patches.hook]]
+func = "func_08001D2C_71F4FC"
+text = """
+#ifdef __3DS__
+    { extern void goemon3ds_photo_hook(uint8_t*, void*, int); goemon3ds_photo_hook(rdram, ctx, 1); }
+#endif
+"""
+[[patches.hook]]
+func = "func_8022669C_69007C"
+before_vram = 0x802266FC
+text = """
+#ifdef __3DS__
+    { extern void goemon3ds_photo_hook(uint8_t*, void*, int); goemon3ds_photo_hook(rdram, ctx, 2); }
+#endif
+"""
+[[patches.hook]]
+func = "func_08000770_71DF40"
+before_vram = 0x080007D0
+text = """
+#ifdef __3DS__
+    { extern void goemon3ds_photo_hook(uint8_t*, void*, int); goemon3ds_photo_hook(rdram, ctx, 2); }
+#endif
+"""

@@ -12,6 +12,7 @@
 #include "librecomp/overlays.hpp"
 #include "ultramodern/ultramodern.hpp"
 #include "recomp3ds.h"
+#include "rt64_3ds.h"
 #include "goemon_settings.h"
 
 namespace recomp3ds {
@@ -187,4 +188,34 @@ extern "C" void recomp_set_right_analog_suppressed(uint8_t* rdram, recomp_contex
 // frame); the 3DS has none.
 extern "C" void recomp_run_ui_callbacks(uint8_t* rdram, recomp_context* ctx) {
     (void)rdram; (void)ctx;
+}
+
+// The ending's sepia photos (mnsg.toml's hooks). The game makes each one from
+// the frame it has just drawn, reading its framebuffer in RDRAM, which the
+// renderer never writes: rt64-3ds copies its last frame there first, from the
+// frames it keeps while a photo may come. `what`: 0 the first call of the
+// ending director's update (func_8020D2A0, its object in a0; it takes the
+// last scene's full-screen photo in state 23), 1 the credits' director's (a
+// photo beside each name), 2 a photo about to be made from the framebuffer
+// in a0 (320x240, RGBA16).
+extern "C" void goemon3ds_photo_hook(uint8_t* rdram, void* context, int what) {
+    recomp_context* ctx = static_cast<recomp_context*>(context);
+    constexpr int kKeepMs = 500;               // renewed every game frame
+    constexpr uint32_t kEndingDirector = 0x8021F9CC;
+    constexpr uint8_t kLastScene = 23;
+    switch (what) {
+    case 0: {
+        // func_8020D2A0's other callers pass other objects.
+        const uint32_t obj = (uint32_t)ctx->r4;
+        if (obj < 0x80000000u || obj >= 0x807FFF00u) return;
+        if ((uint32_t)MEM_W(0xC, ctx->r4) == kEndingDirector && MEM_BU(0x5C, ctx->r4) == kLastScene) rt64_3ds::keep_frames(kKeepMs);
+        break;
+    }
+    case 1:
+        rt64_3ds::keep_frames(kKeepMs);
+        break;
+    case 2:
+        rt64_3ds::read_back_frame(rdram, (uint32_t)ctx->r4, 320, 0, 0, 320, 240);
+        break;
+    }
 }

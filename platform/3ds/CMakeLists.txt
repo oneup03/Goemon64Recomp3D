@@ -44,6 +44,14 @@ target_include_directories(RecompiledFuncs PRIVATE
 target_compile_options(RecompiledFuncs PRIVATE
     -O2 -fno-strict-aliasing -w -Wno-implicit-function-declaration -Wno-error=implicit-function-declaration
     -include "${CMAKE_CURRENT_LIST_DIR}/goemon_host_protos.h")
+# The running function's name for the sampling profile of the game
+# (settings.ini's dbg_profile=2), kept by include/trace.h in every call: off
+# by default, as it costs every call two stores (the profile then counts
+# every sample as dropped).
+option(GOEMON_GAME_PROFILE "trace.h names the running game function, for dbg_profile=2" OFF)
+if(GOEMON_GAME_PROFILE)
+    target_compile_definitions(RecompiledFuncs PRIVATE GOEMON_GAME_PROFILE)
+endif()
 
 add_library(RecompiledPatches STATIC
     "${GOEMON_ROOT}/RecompiledPatches/patches.c"
