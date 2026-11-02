@@ -108,7 +108,9 @@ text = """
 # recomp_api_3ds.cpp), from the frames it keeps meanwhile: through the
 # ending's last scene (its director in state 23; Redub replaces the director,
 # func_8021F9CC, so the hook is on func_8020D2A0, which both versions call
-# first, with the director in a0) and the credits (their director).
+# first, with the director in a0) and the credits (their director; its hook
+# names the entry's address: the desktop's N64Recomp rejects an entry hook
+# without one in a function below 0x80000000).
 [[patches.hook]]
 func = "func_8020D2A0_676C80"
 text = """
@@ -118,6 +120,7 @@ text = """
 """
 [[patches.hook]]
 func = "func_08001D2C_71F4FC"
+before_vram = 0x08001D2C
 text = """
 #ifdef __3DS__
     { extern void goemon3ds_photo_hook(uint8_t*, void*, int); goemon3ds_photo_hook(rdram, ctx, 1); }
