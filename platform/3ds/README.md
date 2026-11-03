@@ -81,10 +81,10 @@ swing returns). Up and down zoom, holding R and pressing C-Up or C-Down for
 you.
 
 SELECT opens the settings on the bottom screen: the 3D page (see Stereo
-3D), the Controls page, the Game page (frame rate, sky, sound on or off,
-music and sound volume, where the HUD goes, screen brightness, and how much
-goes to `log.txt`: Log level) and the Mods page (see Mods). Settings are
-kept in `settings.ini`.
+3D), the Controls page, the Game page (frame rate, sky, Audio off or at Low
+or High priority, music and sound volume, where the HUD goes, screen
+brightness, and how much goes to `log.txt`: Log level) and the Mods page
+(see Mods). Settings are kept in `settings.ini`.
 
 The status bar and the map are on the touch screen by default, leaving the
 top screen to the game; the Game page's HUD row puts them back on the top
@@ -138,15 +138,19 @@ frames (the Game page's Frame rate: 60 interp., like the desktop version's
 high frame rate); the heaviest areas drop back toward 50, and a scene too
 heavy to draw twice in time falls back to 30 for that frame. Set Frame rate
 to Game for the original rate (30 in play and menus, 60 in many cutscenes),
-or 30 fps for at most 30.
+or 30 fps for at most 30. Audio starts at High priority: when the sound
+queued for the speakers runs short, the game's audio work interrupts the
+rest of the game, which keeps the music at its tempo.
 
 **Old 3DS / 2DS:** runs at about 20-30 fps where the game asks 30, lower in
 the heaviest scenes. It starts with Frame rate at 30 fps, as it can't afford
-the frames in between, and the Sky at Flat. Install the CIA rather than
-running the .3dsx: the CIA asks an Old 3DS for 80 MB, enough to hold the
-16 MB ROM in memory (the console restarts when the game closes). The .3dsx
-gets only the Homebrew Launcher's 64 MB, so it reads the ROM from the SD card
-as it needs it, with slower loads.
+the frames in between, the Sky at Flat, and Audio at Low priority, which
+never interrupts the game for its sound: a little faster, and the music may
+run a little slow (High priority keeps it at tempo). Install the CIA rather
+than running the .3dsx: the CIA asks an Old 3DS for 80 MB, enough to hold
+the 16 MB ROM in memory (the console restarts when the game closes). The
+.3dsx gets only the Homebrew Launcher's 64 MB, so it reads the ROM from the
+SD card as it needs it, with slower loads.
 
 ## Mods
 
