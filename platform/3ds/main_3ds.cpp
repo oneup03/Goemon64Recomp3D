@@ -131,6 +131,7 @@ int main(int argc, char** argv) {
     desc.mod_choice_ids = kModChoiceIds;
     desc.mod_choice_names = kModChoiceNames;
     desc.mod_choice_count = sizeof(kModChoiceIds) / sizeof(kModChoiceIds[0]);
+    desc.mod_choice_default = 0;            // Redub, until the row is changed
     desc.entry = recomp::GameEntry{
         // The retail ROM, as the desktop: the game decompresses its files itself
         // and patches/required.c registers their overlays by file id.

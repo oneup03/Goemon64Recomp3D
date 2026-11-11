@@ -69,7 +69,8 @@ D-pad's directions) to any N64 button, adds up to two N64 buttons on the
 touch screen, can turn off C-Stick up and down, and resets it all with
 Reset controls. An Old 3DS has no C-Stick, ZL or ZR, so their rows are
 only on a New 3DS. The Game page's Performance monitor setting hides the
-bottom screen's frame rate and text; touch buttons stay. The Game page
+bottom screen's frame rate and text (off by default, so it doesn't cover
+the HUD); touch buttons stay. The Game page
 also sets each screen's brightness.
 
 The game never reads the N64's L or D-pad. R with the C buttons moves the
@@ -86,23 +87,23 @@ or High priority, music and sound volume, where the HUD goes, screen
 brightness, and how much goes to `log.txt`: Log level) and the Mods page
 (see Mods). Settings are kept in `settings.ini`.
 
-The status bar and the map are on the touch screen by default, leaving the
-top screen to the game; the Game page's HUD row puts them back on the top
-screen. On the touch screen the map is always up in towns and fields
-(C-Right no longer hides it; talking and cutscenes still do), at the top
-left, with any touch buttons beside it. In the castles it shows the floor
-you're on, as the pause screen's map does once you have that castle's map:
-the rooms you've been in, the one you're in pulsing red, north up.
-Dialogue, menus and the Impact battles stay on the top screen. The touch
-screen's performance text is off by default (Performance monitor) so it
-doesn't cover the HUD.
+The status bar and the map are on the touch screen by default, over the
+pause screen's blue backdrop, leaving the top screen to the game; the Game
+page's HUD row puts them back on the top screen, and while the settings are
+open they show there too. On the touch screen the map is always up in towns
+and fields (C-Right no longer hides it; talking and cutscenes still do), at
+the top left, with any touch buttons beside it. In the castles it shows the
+floor you're on, as the pause screen's map does once you have that castle's
+map: the rooms you've been in, the one you're in pulsing red, north up.
+Dialogue, menus and the Impact battles stay on the top screen.
 
 Holding SELECT for a second saves a screenshot of both screens to
 `screenshots/`, or with the Game page's Hold SELECT on Debug Capture, a
 frame capture (`gfx_task.bin`) for bug reports.
 
-HOME opens a quit prompt on the touch screen instead of the HOME Menu: A
-quits, B (or HOME again) goes back to the game, which waits meanwhile.
+HOME opens a quit prompt on the touch screen instead of the HOME Menu: X
+quits (not A, so a press meant for the game's own menus can't), B (or HOME
+again) goes back to the game, which waits meanwhile.
 Quitting writes the game's last save first. Where there is no HOME Menu
 behind the game (an Old 3DS running the CIA, see Performance), quitting
 restarts the console into it, and POWER opens the same prompt. Closing the
@@ -155,8 +156,8 @@ SD card as it needs it, with slower loads.
 ## Mods
 
 Mods for Goemon 64: Recompiled are built in, on the settings' Mods page. Two
-of them don't work together: the Mod row picks one or Off, and the choice
-takes effect the next time the game starts.
+of them don't work together: the Mod row picks one or Off (Redub until it is
+changed), and the choice takes effect the next time the game starts.
 
 - **Redub** (klorfmorf and abyssonym; CC0): restores the Japanese voice
   acting the international releases removed from the opening and ending
@@ -206,7 +207,9 @@ make -C platform/3ds codegen                # fetch and bake the mods, recompile
 make -C platform/3ds cia                    # build-3ds/Goemon64Recompiled3DS.3dsx and .cia
 ```
 
-`RT64_3DS=<path>` uses an rt64-3ds checkout other than `lib/rt64-3ds`.
+`cia` doesn't rebuild the patches: after changing `patches/`, run
+`make -C platform/3ds patches` first. `RT64_3DS=<path>` uses an rt64-3ds
+checkout other than `lib/rt64-3ds`.
 `make -C platform/3ds` without a target builds only the .3dsx;
 `make configure CMAKE_ARGS=-DGOEMON_NULL_RENDERER=ON` and a build give one
 that draws nothing (bring-up). The header of `platform/3ds/Makefile` lists
