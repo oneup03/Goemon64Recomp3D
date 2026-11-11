@@ -158,11 +158,21 @@ static u32 s_sky_last_step = 0;
 // field's cloudy top row 61%.
 #define SKY_PLAIN_TENTHS        9
 #define SKY_PLAIN_DISTANCE      24
+// A sky whose edge rows are both plain and of the same colour (space: near
+// black with stars, top and bottom) has no caps: the panorama repeats above
+// and below itself instead, out to SKY_CAP_ELEVATION, each copy spread
+// evenly over the panorama's span of elevation, so the stars go on rather
+// than stopping at a line a little way above and below the horizon. Every
+// other copy is upside down, so each seam joins a row to itself. Copies
+// outside the view's elevations, widened by this factor on the tangent of
+// half the field of view (the corners of a widescreen view), are left out.
+#define SKY_TILE_COPIES         3
+#define SKY_TILE_VIEW_MARGIN    2.2f
 // Pitch beyond which every column is drawn: looking steeply up or down, the
 // columns behind the camera come into view.
 #define SKY_CULL_PITCH_SIN      0.34f
 #define SKY_VISIBLE_HALF_ANGLE  (85.0f * SKY_PI / 180.0f)
-#define SKY_MAX_QUADS           480
+#define SKY_MAX_QUADS           640
 // Bounds for the per-frame corner tables: column edges around a turn, and row
 // boundaries down the panorama. sky_track rejects textures that exceed them.
 #define SKY_MAX_EDGES           129
@@ -182,6 +192,8 @@ static f32 s_sky_u_at_zero_bearing = 0.0f;
 #define SKY_CAP_PLAIN           2
 static u8 s_sky_cap_colour[2][3] = { { 0, 0, 0 }, { 0, 0, 0 } };
 static int s_sky_cap_mode[2] = { SKY_CAP_STRETCH, SKY_CAP_STRETCH };
+// The panorama repeats vertically instead of capping (SKY_TILE_COPIES).
+static int s_sky_tiled = 0;
 static f32 s_sky_texels_per_radian = 0.0f;
 static f32 s_sky_anchor_sy = 0.0f;
 static f32 s_sky_anchor_tan_pitch = 0.0f;
@@ -449,7 +461,7 @@ static int sky_track(BackgroundGraphicsNode *node) {
     f32 dx, dy, dz, horizontal, yaw, scroll_yaw, scroll_tan_pitch, half_fovy, rate, reference, offset, change;
     f32 prev_yaw, prev_tan_pitch, learn_yaw, turn, wraps;
     s32 whole;
-    int tracking, watching, prev_ok, anchor, still = 0, fast = 0, fast_match, banned;
+    int tracking, watching, prev_ok, anchor, still = 0, fast = 0, fast_match, banned, i;
 
     // The panorama path (bit 15) uses start_x with different units, and the
     // cylinder needs whole columns, so the width must divide into them.
@@ -537,7 +549,15 @@ static int sky_track(BackgroundGraphicsNode *node) {
             // The nearest of the rates (the question is only which: the sky
             // matched one already), none past them.
             const f32 wraps = (-(s_sky_check_scroll - s_sky_drift_per_call * (f32)s_sky_check_calls) / s_sky_check_turn) / width_per_radian;
-            const s32 whole = ((wraps < -0.5f) || (wraps > (f32)SKY_LEARN_MAX_WRAPS + 0.5f)) ? -1 : (s32)(wraps + ((wraps < 0.0f) ? -0.5f : 0.5f));
+            s32 whole = ((wraps < -0.5f) || (wraps > (f32)SKY_LEARN_MAX_WRAPS + 0.5f)) ? -1 : (s32)(wraps + ((wraps < 0.0f) ? -0.5f : 0.5f));
+            // A sky taken by its drift scrolls by itself: a turn that moves it
+            // by none of the rates shows only that (the space cutscene's,
+            // which the scene scrolls back and forth as the ship turns: -1.51
+            // widths a turn, then dropped to flat and re-learned, the sky
+            // jumping each time). It stays as taken, following the scroll.
+            if ((whole < 0) && s_sky_by_still) {
+                whole = 0;
+            }
             // None of the rates; or none at all for a sky taken by Oedo Town's
             // rule (a static backdrop that matched it). One taken by its drift
             // over a still camera may not follow the heading at all (the
@@ -704,6 +724,13 @@ static int sky_track(BackgroundGraphicsNode *node) {
         s_sky_anchor_cot = s_sky_cot;
         s_sky_cap_mode[0] = sky_measure_edge(node, 0, s_sky_cap_colour[0]);
         s_sky_cap_mode[1] = sky_measure_edge(node, node->texture_height - 1, s_sky_cap_colour[1]);
+        s_sky_tiled = (s_sky_cap_mode[0] == SKY_CAP_PLAIN) && (s_sky_cap_mode[1] == SKY_CAP_PLAIN);
+        for (i = 0; i < 3; i++) {
+            const s32 d = (s32)s_sky_cap_colour[0][i] - (s32)s_sky_cap_colour[1][i];
+            if ((d > SKY_PLAIN_DISTANCE) || (d < -SKY_PLAIN_DISTANCE)) {
+                s_sky_tiled = 0;
+            }
+        }
     }
     s_sky_last_step = g_game_step;
     return 1;
@@ -970,8 +997,21 @@ static void sky_draw_3d(BackgroundGraphicsNode *node) {
         s32 cap_rings[2];
         s32 k, b, cap, ring;
         // The caps in their colour (all but SKY_CAP_STRETCH): drawn after the
-        // rest, with a combiner of their own, for these columns.
-        const int coloured_caps = (s_sky_cap_mode[0] != SKY_CAP_STRETCH) || (s_sky_cap_mode[1] != SKY_CAP_STRETCH);
+        // rest, with a combiner of their own, for these columns. None for a
+        // tiled sky.
+        const int coloured_caps = !s_sky_tiled &&
+            ((s_sky_cap_mode[0] != SKY_CAP_STRETCH) || (s_sky_cap_mode[1] != SKY_CAP_STRETCH));
+        // A tiled sky's copies, band by band: rows, elevations (top, bottom)
+        // as the cosine and sine of each, and which edge of the cylinder a
+        // ring is (0 top, 1 bottom, -1 neither) so the seams use its corners.
+        // (Static: the game thread's stack is small.)
+        static f32 tile_t[2 * SKY_TILE_COPIES * SKY_MAX_BANDS][2];
+        static f32 tile_cos[2 * SKY_TILE_COPIES * SKY_MAX_BANDS][2];
+        static f32 tile_y[2 * SKY_TILE_COPIES * SKY_MAX_BANDS][2];
+        static s32 tile_band[2 * SKY_TILE_COPIES * SKY_MAX_BANDS];
+        static s32 tile_seam[2 * SKY_TILE_COPIES * SKY_MAX_BANDS][2];
+        static s32 tile_mirror[2 * SKY_TILE_COPIES * SKY_MAX_BANDS];
+        s32 tile_count = 0;
         s32 colour_column[SKY_MAX_EDGES];
         s32 colour_count = 0;
 
@@ -1029,6 +1069,56 @@ static void sky_draw_3d(BackgroundGraphicsNode *node) {
             }
         }
 
+        // Copy c (c = 1 above, -1 below, and on) puts its row t at elevation
+        // top + (c - t / H) * span; copy 0 would be the panorama itself. An
+        // odd copy draws texture row H - t there, upside down, so copy 1's
+        // row 0 meets the panorama's row 0, copy -1's row H its row H, and
+        // so on out.
+        if (s_sky_tiled) {
+            const f32 top = sky_atan2(band_y[0], SKY_RADIUS);
+            const f32 span = top - sky_atan2(band_y[band_count - 1], SKY_RADIUS);
+            const f32 horizontal = sky_sqrt(s_sky_forward[0] * s_sky_forward[0] + s_sky_forward[2] * s_sky_forward[2]);
+            const f32 pitch = sky_atan2(s_sky_forward[1], horizontal);
+            const f32 reach = sky_atan2(SKY_TILE_VIEW_MARGIN, s_sky_cot);
+            s32 c;
+            for (c = -SKY_TILE_COPIES; (c <= SKY_TILE_COPIES) && (span > 0.01f); c++) {
+                if (c == 0) {
+                    continue;
+                }
+                for (b = 0; b + 1 < band_count; b++) {
+                    f32 t[2] = { (f32)band_row[b], (f32)band_row[b + 1] };
+                    f32 e[2];
+                    s32 end;
+                    for (end = 0; end < 2; end++) {
+                        e[end] = top + ((f32)c - t[end] / (f32)texture_height) * span;
+                        if (e[end] > SKY_CAP_ELEVATION) {
+                            e[end] = SKY_CAP_ELEVATION;
+                        }
+                        else if (e[end] < -SKY_CAP_ELEVATION) {
+                            e[end] = -SKY_CAP_ELEVATION;
+                        }
+                        // Back to the row at the clamped elevation.
+                        t[end] = ((f32)c - (e[end] - top) / span) * (f32)texture_height;
+                    }
+                    if ((e[0] - e[1] < 0.001f) || (e[1] > pitch + reach) || (e[0] < pitch - reach)) {
+                        continue;
+                    }
+                    for (end = 0; end < 2; end++) {
+                        tile_t[tile_count][end] = t[end];
+                        tile_cos[tile_count][end] = SKY_RADIUS * sky_cos(e[end]);
+                        tile_y[tile_count][end] = (f32)sky_round(SKY_RADIUS * sky_sin(e[end]));
+                        // Copy 1's last row is the panorama's top edge, copy -1's
+                        // first its bottom one.
+                        tile_seam[tile_count][end] = ((c == 1) && (end == 1) && (b + 2 == band_count)) ? 0 :
+                            ((c == -1) && (end == 0) && (b == 0)) ? 1 : -1;
+                    }
+                    tile_band[tile_count] = b;
+                    tile_mirror[tile_count] = c & 1;
+                    tile_count++;
+                }
+            }
+        }
+
         for (column = 0; column < column_count; column++) {
             const f32 u0 = u_start + (f32)(column * SKY_COLUMN_TEXELS);
             const s32 texel0 = (s32)sky_wrap(u0, (f32)texture_width);
@@ -1052,6 +1142,43 @@ static void sky_draw_3d(BackgroundGraphicsNode *node) {
                 sky_emit_quad(&gfx, &vertices[quad_count * 4], node, image_format, image_size,
                     x0, band_y[b], z0, x1, band_y[b], z1, x1, band_y[b + 1], z1, x0, band_y[b + 1], z0,
                     texel0, (f32)band_row[b], (f32)band_row[b + 1], band_row[b], band_row[b + 1], NULL, 0xFF, 0xFF);
+                quad_count++;
+            }
+
+            // A tiled sky's copies above and below, on the sphere of the same
+            // directions (only the direction of a corner matters: the sky has
+            // the camera's rotation alone), meeting the cylinder at its corners.
+            for (k = 0; k < tile_count; k++) {
+                f32 xs[2][2], ys[2], zs[2][2];
+                s32 end;
+                if (quad_count >= SKY_MAX_QUADS) {
+                    break;
+                }
+                for (end = 0; end < 2; end++) {
+                    if (tile_seam[k][end] >= 0) {
+                        xs[end][0] = x0; zs[end][0] = z0;
+                        xs[end][1] = x1; zs[end][1] = z1;
+                        ys[end] = (tile_seam[k][end] == 0) ? band_y[0] : band_y[band_count - 1];
+                    }
+                    else {
+                        xs[end][0] = (f32)sky_round(tile_cos[k][end] * dir_x[column]);
+                        zs[end][0] = (f32)sky_round(tile_cos[k][end] * dir_z[column]);
+                        xs[end][1] = (f32)sky_round(tile_cos[k][end] * dir_x[column + 1]);
+                        zs[end][1] = (f32)sky_round(tile_cos[k][end] * dir_z[column + 1]);
+                        ys[end] = tile_y[k][end];
+                    }
+                }
+                if (tile_mirror[k]) {
+                    sky_emit_quad(&gfx, &vertices[quad_count * 4], node, image_format, image_size,
+                        xs[0][0], ys[0], zs[0][0], xs[0][1], ys[0], zs[0][1], xs[1][1], ys[1], zs[1][1], xs[1][0], ys[1], zs[1][0],
+                        texel0, (f32)texture_height - tile_t[k][0], (f32)texture_height - tile_t[k][1],
+                        texture_height - band_row[tile_band[k] + 1], texture_height - band_row[tile_band[k]], NULL, 0xFF, 0xFF);
+                }
+                else {
+                    sky_emit_quad(&gfx, &vertices[quad_count * 4], node, image_format, image_size,
+                        xs[0][0], ys[0], zs[0][0], xs[0][1], ys[0], zs[0][1], xs[1][1], ys[1], zs[1][1], xs[1][0], ys[1], zs[1][0],
+                        texel0, tile_t[k][0], tile_t[k][1], band_row[tile_band[k]], band_row[tile_band[k] + 1], NULL, 0xFF, 0xFF);
+                }
                 quad_count++;
             }
 

@@ -15,8 +15,11 @@ DECLARE_FUNC(s32, recomp_get_hud_on_bottom);
 // layer's draw as the game has it, with the bar and the map marked for the
 // touch screen where they are, the map at the top left, the right left to the
 // touch buttons (rt64-3ds draws marked spans there while the Game page's HUD
-// row says so, on the top screen otherwise). In a castle, the floor's map
-// follows the bar there (dungeon_map.c).
+// row says so, on the top screen otherwise). On the touch screen the pause
+// screen's blue backdrop goes under them (hud_backdrop.c), drawn with the
+// frame's first layer: while the settings menu has the marked spans on the
+// top screen, the scene drawn after it covers it there. In a castle the
+// floor's map follows the bar there (dungeon_map.c).
 
 #define HUD_LAYER 10
 #define LAYERS_OFFSET 0xC3394                       // the layers' groups in SYS_W
@@ -33,6 +36,10 @@ extern s32 func_80016C44_17844(CLS_W *object);
 extern void func_800215D0_221D0(void);
 extern void func_80021740_22340(CLS_W *object);
 extern s32 dungeon_map_draw(void);
+extern s32 hud_backdrop_draw(void);
+extern u32 g_game_step;
+
+static u32 backdrop_step = 0xFFFFFFFF;          // the game step whose first layer drew the backdrop
 
 enum { SPAN_NONE, SPAN_BAR, SPAN_MAP };
 
@@ -63,6 +70,14 @@ RECOMP_PATCH void func_800087C4_93C4(CLS_GROUP_W *group) {
 
     if (LAYERS_OFF == 1) {
         return;
+    }
+    if (backdrop_step != g_game_step) {
+        backdrop_step = g_game_step;
+        if (hud_backdrop_draw()) {
+            SPRITE_SETUP_FN = 0x800086F0;
+            SPRITE_CACHE_A = 0xFFFF;
+            SPRITE_CACHE_B = 0xFFFF;
+        }
     }
     for (i = 0; i < group->size; i++) {
         CLS_W *object = group->elements[i];

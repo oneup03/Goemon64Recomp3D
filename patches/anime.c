@@ -47,12 +47,23 @@ static void widen_camera_scissor(Camera *cam) {
 // classifies draws for stereo by projection-group id, the way the DK64 and Banjo ports tag
 // theirs (platform/3ds/main_3ds.cpp). Goemon draws some HUD items as small 3D models under a
 // private perspective camera parked near the origin and looking straight down -Z (measured at
-// (0, 0, -21) with a rotation within a few degrees of identity); the world camera is wherever
-// the scene is, pointed wherever the shot needs. Anything else is the world.
+// (0, 0, -21) with a rotation within a few degrees of identity) with a narrow field of view
+// (28 degrees: the menus' curtain and panels, the pause map's icons); the world camera is
+// wherever the scene is, pointed wherever the shot needs. The Impact battles and their
+// cutscenes also shoot from near the origin down -Z, but through a wide lens (55-68 degrees):
+// they are the world, which a HUD id made flat wherever the projection was split (the
+// cockpit's lower half, drawn after the explosion sprites). Anything else is the world. The
+// limit, 34 degrees, is midway between the HUD cameras' 28 and the narrowest world camera seen
+// in the captures (41).
+#define HUD_CAMERA_MAX_HALF_FOVY    (17 * 32768 / 180)      // Camera::unknown_1a, 32768 a half turn
 static u32 goemon_projection_id_for_camera(const Camera *cam) {
     f32 dx, dy, dz, limit;
 
     if (cam == NULL) {
+        return PROJECTION_GAMEPLAY_TRANSFORM_ID;
+    }
+
+    if ((u16)cam->unknown_1a > HUD_CAMERA_MAX_HALF_FOVY) {
         return PROJECTION_GAMEPLAY_TRANSFORM_ID;
     }
 

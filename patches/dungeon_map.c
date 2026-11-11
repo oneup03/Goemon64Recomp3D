@@ -22,6 +22,8 @@ DECLARE_FUNC(s32, recomp_get_hud_on_bottom);
 
 #define FILE_DUNGEON_MAPS   0x4D2
 #define DUNGEON_MAPS_SIZE   0x335B0                     // as loaded (the file table's size)
+#define DUNGEON_MAPS_DATA   0x131B0                     // ... of which the file's own data; the
+                                                        // rest is where the pause screen decodes its pictures
 #define DUNGEONS            5
 #define MAX_FLOORS          4
 #define MAX_ROOMS           32
@@ -135,6 +137,13 @@ static u8 shown_visited[8];
 static u32 *pulse_word;
 static s32 pulse_step;
 static s32 pulse_dir = 1;
+
+// The room past the file's data, where the pause screen decodes its pictures
+// (hud_backdrop.c decodes its backdrop there, as the pause screen does).
+u8 *dungeon_maps_picture_room(u32 *size) {
+    *size = DUNGEON_MAPS_SIZE - DUNGEON_MAPS_DATA;
+    return maps_file + DUNGEON_MAPS_DATA;
+}
 
 static void *maps_addr(u32 segmented) {
     return maps_file + (segmented & 0xFFFFFF);
