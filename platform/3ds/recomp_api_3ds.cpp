@@ -170,6 +170,27 @@ extern "C" void recomp_get_hud_on_bottom(uint8_t* rdram, recomp_context* ctx) {
     _return<s32>(ctx, recomp3ds::hud_on_bottom() ? 1 : 0);
 }
 
+// patches/hud_backdrop.c: the touch-screen HUD's backdrop (the pause
+// screen's blue diamonds) made the touch screen's picture, as the patch drew
+// it before in 30 rectangles: its 16x16 RGBA16 tile repeated from the top
+// left, each 8-line band multiplied by its level (0..255), opaque.
+extern "C" void recomp_set_hud_backdrop(uint8_t* rdram, recomp_context* ctx) {
+    static uint16_t picture[320 * 240];
+    const gpr tile = ctx->r4, levels = ctx->r5;
+    for (uint32_t y = 0; y < 240; y++) {
+        const uint32_t level = MEM_BU((int32_t)(y / 8), levels);
+        for (uint32_t x = 0; x < 320; x++) {
+            const uint16_t c = MEM_HU((int32_t)(((y & 15) * 16 + (x & 15)) * 2), tile);    // RGBA5551
+            const uint32_t r5 = c >> 11, g5 = (c >> 6) & 31, b5 = (c >> 1) & 31;
+            const uint32_t r = (((r5 << 3) | (r5 >> 2)) * level + 127) / 255;
+            const uint32_t g = (((g5 << 3) | (g5 >> 2)) * level + 127) / 255;
+            const uint32_t b = (((b5 << 3) | (b5 >> 2)) * level + 127) / 255;
+            picture[y * 320 + x] = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+        }
+    }
+    rt64_3ds::set_bottom_background(picture);
+}
+
 // The analog camera's stick: the C-Stick, with the C-Stick deadzone of the
 // Controls page.
 extern "C" void recomp_get_camera_inputs(uint8_t* rdram, recomp_context* ctx) {

@@ -213,6 +213,10 @@ int main(int argc, char** argv) {
     // The status bar and the map on the touch screen (patches/hud_screen.c
     // marks them), the Game page's HUD row choosing.
     desc.render.hud_on_bottom_supported = true;
+    // Behind them, the pause screen's blue backdrop: its picture made the
+    // first time it is drawn (recomp_set_hud_backdrop), shown in the frames
+    // that ask for it (gEX3DSBottomBackground, patches/hud_backdrop.c).
+    desc.render.hud_bottom_background_at_run_time = true;
     // Its touch buttons there: right of the map, which stays at the top left
     // (x 152..319, y 40..175), clear of it, the bar and the status lines.
     desc.touch_area_hud = { 19, 5, 21, 17 };

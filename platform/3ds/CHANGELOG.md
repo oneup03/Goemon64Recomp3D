@@ -16,6 +16,7 @@
 
 ### Changed
 - **The HOME quit prompt now quits with X instead of A**, so a press meant for the game's own menus can't quit by accident. B still goes back to the game.
+- **The bottom-screen HUD takes less work to draw**: only the part that changed is redrawn, and its text and the blue backdrop are drawn by the GPU.
 
 ## 2026-11-01
 

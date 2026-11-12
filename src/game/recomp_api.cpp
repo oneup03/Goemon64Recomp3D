@@ -148,6 +148,11 @@ extern "C" void recomp_get_hud_on_bottom(uint8_t* rdram, recomp_context* ctx) {
     _return(ctx, static_cast<s32>(0));
 }
 
+// The touch-screen HUD's backdrop as the 3DS renderer's picture
+// (patches/hud_backdrop.c, built for the 3DS only).
+extern "C" void recomp_set_hud_backdrop(uint8_t* rdram, recomp_context* ctx) {
+}
+
 extern "C" void recomp_get_inverted_axes(uint8_t* rdram, recomp_context* ctx) {
     s32* x_out = _arg<0, s32*>(rdram, ctx);
     s32* y_out = _arg<1, s32*>(rdram, ctx);
