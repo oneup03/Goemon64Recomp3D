@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-12
+
+### New
+- **The .3dsx on its own**: the release also has `Goemon64.3dsx`, so the Homebrew Launcher version updates without the zip: put it in `sdmc:/3ds/Goemon64/` over the old one.
+- **One CIA name**: the CIA keeps one name from build to build, `Goemon64Recompiled3D-3ds.cia`, so its download link and QR code no longer change.
+
 ## 2026-11-11
 
 ### New
